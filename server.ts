@@ -22,13 +22,8 @@ db.exec(`
   )
 `);
 
-// Add sample invoice if empty
-const count = db.prepare("SELECT COUNT(*) as count FROM invoices").get() as { count: number };
-if (count.count === 0) {
-  db.prepare(
-    "INSERT INTO invoices (id, customerName, amount, payeeName, payeeVpa) VALUES (?, ?, ?, ?, ?)"
-  ).run("INV-001", "Sample Customer", 100.00, "Sample Payee", "sample@upi");
-}
+// Clear existing data to start fresh as requested
+db.exec("DELETE FROM invoices");
 
 app.use(cors());
 app.use(bodyParser.json());
@@ -62,6 +57,39 @@ app.patch("/api/invoices/:id/status", (req, res) => {
   } else {
     res.status(404).json({ error: "Invoice not found" });
   }
+});
+
+app.delete("/api/invoices/:id", (req, res) => {
+  const { id } = req.params;
+  const stmt = db.prepare("DELETE FROM invoices WHERE id = ?");
+  const result = stmt.run(id);
+  if (result.changes > 0) {
+    res.json({ message: "Invoice deleted" });
+  } else {
+    res.status(404).json({ error: "Invoice not found" });
+  }
+});
+
+app.post("/api/invoices/bulk-delete", (req, res) => {
+  const { ids } = req.body;
+  if (!Array.isArray(ids) || ids.length === 0) {
+    return res.status(400).json({ error: "Invalid IDs" });
+  }
+  const placeholders = ids.map(() => "?").join(",");
+  const stmt = db.prepare(`DELETE FROM invoices WHERE id IN (${placeholders})`);
+  stmt.run(...ids);
+  res.json({ message: `${ids.length} invoices deleted` });
+});
+
+app.post("/api/invoices/bulk-status", (req, res) => {
+  const { ids, status } = req.body;
+  if (!Array.isArray(ids) || ids.length === 0) {
+    return res.status(400).json({ error: "Invalid IDs" });
+  }
+  const placeholders = ids.map(() => "?").join(",");
+  const stmt = db.prepare(`UPDATE invoices SET status = ? WHERE id IN (${placeholders})`);
+  stmt.run(status, ...ids);
+  res.json({ message: `Status updated for ${ids.length} invoices` });
 });
 
 async function startServer() {
