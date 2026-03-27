@@ -19,7 +19,10 @@ import {
   Filter,
   CheckSquare,
   Square,
-  AlertTriangle
+  AlertTriangle,
+  FileDown,
+  RefreshCw,
+  Check
 } from 'lucide-react';
 import QRCode from 'qrcode';
 import { jsPDF } from 'jspdf';
@@ -52,6 +55,21 @@ export default function App() {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [invoiceToDelete, setInvoiceToDelete] = useState<Invoice | null>(null);
   const [bulkActionLoading, setBulkActionLoading] = useState(false);
+  
+  // CSV Export States
+  const [showExportModal, setShowExportModal] = useState(false);
+  const [exportFields, setExportFields] = useState({
+    id: true,
+    customerName: true,
+    amount: true,
+    status: true,
+    createdAt: true,
+    payeeName: true,
+    payeeVpa: true
+  });
+
+  // QR Feedback State
+  const [isScanned, setIsScanned] = useState(false);
 
   // Form state
   const [formData, setFormData] = useState({
@@ -229,63 +247,119 @@ export default function App() {
   const downloadPdf = (invoice: Invoice) => {
     const doc = new jsPDF();
     
-    // Header
+    // Header - Ultra Modern B&W
+    doc.setFillColor(0, 0, 0);
+    doc.rect(0, 0, 210, 40, 'F');
+    
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(24);
-    doc.setTextColor(31, 41, 55);
-    doc.text('Invoice', 20, 30);
+    doc.setFontSize(32);
+    doc.setTextColor(255, 255, 255);
+    doc.text('INVOICE', 20, 28);
     
     doc.setFontSize(10);
     doc.setFont('helvetica', 'normal');
-    doc.setTextColor(107, 114, 128);
-    doc.text(`Invoice ID: ${invoice.id}`, 20, 40);
-    doc.text(`Date: ${new Date(invoice.createdAt).toLocaleDateString()}`, 20, 45);
+    doc.setTextColor(200, 200, 200);
+    doc.text(`ID: ${invoice.id}`, 140, 20);
+    doc.text(`DATE: ${new Date(invoice.createdAt).toLocaleDateString()}`, 140, 26);
     
-    doc.setDrawColor(229, 231, 235);
-    doc.line(20, 55, 190, 55);
-    
-    // Details
-    doc.setFontSize(10);
-    doc.setTextColor(107, 114, 128);
-    doc.text('BILL TO', 20, 70);
-    doc.setTextColor(31, 41, 55);
+    // Billing Info
+    doc.setTextColor(150, 150, 150);
+    doc.setFontSize(9);
     doc.setFont('helvetica', 'bold');
-    doc.text(invoice.customerName, 20, 78);
+    doc.text('BILL TO', 20, 60);
     
-    doc.setTextColor(107, 114, 128);
-    doc.setFont('helvetica', 'normal');
-    doc.text('PAYEE', 120, 70);
-    doc.setTextColor(31, 41, 55);
-    doc.setFont('helvetica', 'bold');
-    doc.text(invoice.payeeName, 120, 78);
-    doc.setFont('helvetica', 'normal');
-    doc.setTextColor(107, 114, 128);
-    doc.text(invoice.payeeVpa, 120, 84);
-    
-    doc.line(20, 100, 190, 100);
-    
-    // Amount
-    doc.setFontSize(12);
-    doc.setTextColor(107, 114, 128);
-    doc.text('TOTAL AMOUNT', 20, 120);
-    doc.setFontSize(20);
     doc.setTextColor(0, 0, 0);
-    doc.setFont('helvetica', 'bold');
-    doc.text(`INR ${invoice.amount.toFixed(2)}`, 120, 120);
+    doc.setFontSize(14);
+    doc.text(invoice.customerName.toUpperCase(), 20, 70);
     
-    // QR Code
+    doc.setTextColor(150, 150, 150);
+    doc.setFontSize(9);
+    doc.text('FROM', 120, 60);
+    
+    doc.setTextColor(0, 0, 0);
+    doc.setFontSize(12);
+    doc.text(invoice.payeeName, 120, 70);
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'normal');
+    doc.text(invoice.payeeVpa, 120, 76);
+    
+    // Table Header
+    doc.setDrawColor(0, 0, 0);
+    doc.setLineWidth(0.5);
+    doc.line(20, 95, 190, 95);
+    
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(10);
+    doc.text('DESCRIPTION', 20, 105);
+    doc.text('AMOUNT', 160, 105, { align: 'right' });
+    
+    doc.line(20, 110, 190, 110);
+    
+    // Table Content
+    doc.setFont('helvetica', 'normal');
+    doc.text(`Service/Product for ${invoice.customerName}`, 20, 125);
+    doc.setFont('helvetica', 'bold');
+    doc.text(`INR ${invoice.amount.toFixed(2)}`, 160, 125, { align: 'right' });
+    
+    // Total Section
+    doc.setFillColor(245, 245, 245);
+    doc.rect(110, 140, 80, 25, 'F');
+    doc.setFontSize(10);
+    doc.setTextColor(100, 100, 100);
+    doc.text('TOTAL DUE', 120, 155);
+    doc.setFontSize(16);
+    doc.setTextColor(0, 0, 0);
+    doc.text(`INR ${invoice.amount.toFixed(2)}`, 185, 155, { align: 'right' });
+    
+    // QR Code Integration
     if (qrDataUrl) {
-      doc.setTextColor(107, 114, 128);
-      doc.setFontSize(9);
-      doc.text('Scan to Pay via UPI', 105, 145, { align: 'center' });
-      doc.addImage(qrDataUrl, 'PNG', 75, 150, 60, 60);
+      doc.setDrawColor(230, 230, 230);
+      doc.rect(75, 180, 60, 75);
+      doc.addImage(qrDataUrl, 'PNG', 80, 185, 50, 50);
+      doc.setFontSize(8);
+      doc.setTextColor(150, 150, 150);
+      doc.text('SCAN TO PAY VIA UPI', 105, 245, { align: 'center' });
     }
     
+    // Footer
     doc.setFontSize(8);
-    doc.setTextColor(156, 163, 175);
-    doc.text('This is a system generated invoice.', 105, 280, { align: 'center' });
+    doc.setTextColor(180, 180, 180);
+    doc.text(`© 2026 UPISync. All rights reserved.`, 105, 285, { align: 'center' });
     
     doc.save(`Invoice_${invoice.id}.pdf`);
+  };
+
+  const exportToCSV = () => {
+    const selectedFields = Object.entries(exportFields)
+      .filter(([_, enabled]) => enabled)
+      .map(([field]) => field);
+    
+    if (selectedFields.length === 0) return;
+
+    const header = selectedFields.join(',');
+    const rows = filteredAndSortedInvoices.map(inv => {
+      return selectedFields.map(field => {
+        const val = (inv as any)[field];
+        return typeof val === 'string' ? `"${val.replace(/"/g, '""')}"` : val;
+      }).join(',');
+    });
+
+    const csvContent = [header, ...rows].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', `Invoices_Export_${new Date().toISOString().split('T')[0]}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    setShowExportModal(false);
+  };
+
+  const simulateScan = () => {
+    setIsScanned(true);
+    setTimeout(() => setIsScanned(false), 3000);
   };
 
   return (
@@ -299,13 +373,23 @@ export default function App() {
             </div>
             <h1 className="text-2xl font-black tracking-tighter text-black uppercase">UPISync</h1>
           </div>
-          <button 
-            onClick={() => setShowForm(true)}
-            className="modern-button shadow-xl shadow-gray-100"
-          >
-            <Plus className="w-5 h-5" />
-            New Invoice
-          </button>
+          <div className="flex gap-2">
+            <button 
+              onClick={() => setShowExportModal(true)}
+              className="p-3 bg-white hover:bg-gray-50 rounded-xl text-black transition-all border border-gray-100 shadow-sm hover:shadow-md active:scale-95 flex items-center gap-2"
+              title="Export CSV"
+            >
+              <FileDown className="w-5 h-5" />
+              <span className="text-xs font-bold uppercase tracking-widest hidden sm:inline">Export</span>
+            </button>
+            <button 
+              onClick={() => setShowForm(true)}
+              className="modern-button shadow-xl shadow-gray-100"
+            >
+              <Plus className="w-5 h-5" />
+              New Invoice
+            </button>
+          </div>
         </div>
       </header>
 
@@ -541,14 +625,49 @@ export default function App() {
                     </div>
                   </div>
 
-                  <div className="p-8 flex flex-col items-center justify-center bg-gray-50/50">
-                    <div className="bg-white p-4 rounded-2xl shadow-xl border border-gray-100 mb-6">
+                  <div className="p-8 flex flex-col items-center justify-center bg-gray-50/50 relative">
+                    <div className={cn(
+                      "bg-white p-4 rounded-2xl shadow-xl border-4 transition-all duration-500 mb-6 relative",
+                      isScanned ? "border-green-500 scale-105" : "border-white"
+                    )}>
                       {qrDataUrl ? (
                         <img src={qrDataUrl} alt="UPI QR" className="w-48 h-48" />
                       ) : (
                         <div className="w-48 h-48 bg-gray-100 rounded-xl animate-pulse" />
                       )}
+                      
+                      <AnimatePresence>
+                        {isScanned && (
+                          <motion.div 
+                            initial={{ opacity: 0, scale: 0.5 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            exit={{ opacity: 0, scale: 0.5 }}
+                            className="absolute inset-0 bg-green-500/10 flex items-center justify-center rounded-xl backdrop-blur-[2px]"
+                          >
+                            <div className="bg-green-500 text-white p-3 rounded-full shadow-lg">
+                              <Check className="w-8 h-8" />
+                            </div>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
                     </div>
+
+                    <div className="flex gap-3 mb-6">
+                      <button 
+                        onClick={() => generateQrCode(selectedInvoice)}
+                        className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-100 rounded-xl text-xs font-bold uppercase tracking-widest hover:bg-gray-50 transition-all shadow-sm"
+                      >
+                        <RefreshCw className="w-3.5 h-3.5" />
+                        Regenerate
+                      </button>
+                      <button 
+                        onClick={simulateScan}
+                        className="flex items-center gap-2 px-4 py-2 bg-black text-white rounded-xl text-xs font-bold uppercase tracking-widest hover:bg-gray-800 transition-all shadow-sm"
+                      >
+                        Simulate Scan
+                      </button>
+                    </div>
+
                     <div className="text-center space-y-3">
                       <div className="flex items-center justify-center gap-2 text-black">
                         <ShieldCheck className="w-5 h-5" />
@@ -575,6 +694,66 @@ export default function App() {
           </AnimatePresence>
         </div>
       </main>
+
+      {/* Export Modal */}
+      <AnimatePresence>
+        {showExportModal && (
+          <div className="fixed inset-0 z-[70] flex items-center justify-center p-6">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowExportModal(false)}
+              className="absolute inset-0 bg-black/60 backdrop-blur-md"
+            />
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.95, opacity: 0, y: 20 }}
+              className="relative bg-white w-full max-w-lg rounded-[2.5rem] shadow-2xl overflow-hidden border border-gray-100"
+            >
+              <div className="p-8 border-b border-gray-100 flex justify-between items-center">
+                <div>
+                  <h2 className="text-2xl font-black tracking-tighter text-black">Export Invoices</h2>
+                  <p className="text-xs text-gray-400 font-bold uppercase tracking-widest mt-1">Select fields for CSV</p>
+                </div>
+                <button onClick={() => setShowExportModal(false)} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
+                  <X className="w-5 h-5 text-gray-500" />
+                </button>
+              </div>
+              <div className="p-8 space-y-6">
+                <div className="grid grid-cols-2 gap-4">
+                  {Object.keys(exportFields).map((field) => (
+                    <button
+                      key={field}
+                      onClick={() => setExportFields(prev => ({ ...prev, [field]: !(prev as any)[field] }))}
+                      className={cn(
+                        "flex items-center justify-between p-4 rounded-2xl border transition-all",
+                        (exportFields as any)[field] 
+                          ? "bg-black border-black text-white" 
+                          : "bg-white border-gray-100 text-gray-400 hover:border-gray-200"
+                      )}
+                    >
+                      <span className="text-xs font-bold uppercase tracking-widest">{field.replace(/([A-Z])/g, ' $1')}</span>
+                      {(exportFields as any)[field] ? <CheckSquare className="w-4 h-4" /> : <Square className="w-4 h-4" />}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="pt-4">
+                  <button
+                    onClick={exportToCSV}
+                    className="w-full py-4 bg-black hover:bg-gray-800 text-white font-black uppercase tracking-widest rounded-2xl transition-all shadow-xl shadow-gray-200 flex items-center justify-center gap-3"
+                  >
+                    <FileDown className="w-5 h-5" />
+                    Download CSV ({filteredAndSortedInvoices.length} items)
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       {/* Delete Confirmation Modal */}
       <AnimatePresence>
