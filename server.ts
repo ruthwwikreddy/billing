@@ -18,6 +18,7 @@ db.exec(`
     payeeName TEXT NOT NULL,
     payeeVpa TEXT NOT NULL,
     status TEXT DEFAULT 'unpaid',
+    location TEXT,
     createdAt DATETIME DEFAULT CURRENT_TIMESTAMP
   )
 `);
@@ -34,13 +35,31 @@ app.get("/api/invoices", (req, res) => {
   res.json(invoices);
 });
 
+app.get("/api/stats", (req, res) => {
+  const totalInvoices = db.prepare("SELECT COUNT(*) as count FROM invoices").get() as { count: number };
+  const paidInvoices = db.prepare("SELECT COUNT(*) as count FROM invoices WHERE status = 'paid'").get() as { count: number };
+  const unpaidInvoices = db.prepare("SELECT COUNT(*) as count FROM invoices WHERE status = 'unpaid'").get() as { count: number };
+  const totalAmount = db.prepare("SELECT SUM(amount) as sum FROM invoices").get() as { sum: number | null };
+  const paidAmount = db.prepare("SELECT SUM(amount) as sum FROM invoices WHERE status = 'paid'").get() as { sum: number | null };
+  const unpaidAmount = db.prepare("SELECT SUM(amount) as sum FROM invoices WHERE status = 'unpaid'").get() as { sum: number | null };
+
+  res.json({
+    totalCount: totalInvoices.count,
+    paidCount: paidInvoices.count,
+    unpaidCount: unpaidInvoices.count,
+    totalAmount: totalAmount.sum || 0,
+    paidAmount: paidAmount.sum || 0,
+    unpaidAmount: unpaidAmount.sum || 0,
+  });
+});
+
 app.post("/api/invoices", (req, res) => {
-  const { id, customerName, amount, payeeName, payeeVpa } = req.body;
+  const { id, customerName, amount, payeeName, payeeVpa, location } = req.body;
   try {
     const stmt = db.prepare(
-      "INSERT INTO invoices (id, customerName, amount, payeeName, payeeVpa) VALUES (?, ?, ?, ?, ?)"
+      "INSERT INTO invoices (id, customerName, amount, payeeName, payeeVpa, location) VALUES (?, ?, ?, ?, ?, ?)"
     );
-    stmt.run(id, customerName, amount, payeeName, payeeVpa);
+    stmt.run(id, customerName, amount, payeeName, payeeVpa, location);
     res.status(201).json({ message: "Invoice created successfully" });
   } catch (error) {
     res.status(400).json({ error: "Invoice ID already exists or invalid data" });

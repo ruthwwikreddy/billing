@@ -22,12 +22,27 @@ import {
   AlertTriangle,
   FileDown,
   RefreshCw,
-  Check
+  Check,
+  LayoutDashboard,
+  TrendingUp,
+  PieChart as PieChartIcon
 } from 'lucide-react';
 import QRCode from 'qrcode';
 import { jsPDF } from 'jspdf';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from './lib/utils';
+import { 
+  BarChart, 
+  Bar, 
+  XAxis, 
+  YAxis, 
+  CartesianGrid, 
+  Tooltip, 
+  ResponsiveContainer, 
+  Cell,
+  PieChart,
+  Pie
+} from 'recharts';
 
 interface Invoice {
   id: string;
@@ -39,6 +54,15 @@ interface Invoice {
   createdAt: string;
 }
 
+interface Stats {
+  totalCount: number;
+  paidCount: number;
+  unpaidCount: number;
+  totalAmount: number;
+  paidAmount: number;
+  unpaidAmount: number;
+}
+
 const DEFAULT_PAYEE_NAME = "Ruthwik Reddy";
 const DEFAULT_PAYEE_VPA = "7842906633@ybl";
 
@@ -48,6 +72,8 @@ export default function App() {
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
   const [loading, setLoading] = useState(false);
   const [qrDataUrl, setQrDataUrl] = useState<string>('');
+  const [showDashboard, setShowDashboard] = useState(false);
+  const [stats, setStats] = useState<Stats | null>(null);
   
   // New States
   const [searchQuery, setSearchQuery] = useState('');
@@ -73,12 +99,20 @@ export default function App() {
 
   // Form state
   const [formData, setFormData] = useState({
-    id: '',
+    id: Math.random().toString(36).substring(2, 10).toUpperCase(),
     customerName: '',
     amount: '',
     payeeName: DEFAULT_PAYEE_NAME,
-    payeeVpa: DEFAULT_PAYEE_VPA
+    payeeVpa: DEFAULT_PAYEE_VPA,
+    location: ''
   });
+
+  const regenerateId = () => {
+    setFormData(prev => ({
+      ...prev,
+      id: Math.random().toString(36).substring(2, 10).toUpperCase()
+    }));
+  };
 
   useEffect(() => {
     fetchInvoices();
@@ -95,8 +129,19 @@ export default function App() {
       const res = await fetch('/api/invoices');
       const data = await res.json();
       setInvoices(data);
+      fetchStats();
     } catch (error) {
       console.error('Failed to fetch invoices', error);
+    }
+  };
+
+  const fetchStats = async () => {
+    try {
+      const res = await fetch('/api/stats');
+      const data = await res.json();
+      setStats(data);
+    } catch (error) {
+      console.error('Failed to fetch stats', error);
     }
   };
 
@@ -132,11 +177,12 @@ export default function App() {
       if (res.ok) {
         setShowForm(false);
         setFormData({ 
-          id: '', 
+          id: Math.random().toString(36).substring(2, 10).toUpperCase(), 
           customerName: '', 
           amount: '', 
           payeeName: DEFAULT_PAYEE_NAME, 
-          payeeVpa: DEFAULT_PAYEE_VPA 
+          payeeVpa: DEFAULT_PAYEE_VPA,
+          location: ''
         });
         fetchInvoices();
       } else {
@@ -375,6 +421,17 @@ export default function App() {
           </div>
           <div className="flex gap-2">
             <button 
+              onClick={() => setShowDashboard(!showDashboard)}
+              className={cn(
+                "p-3 rounded-xl transition-all border shadow-sm hover:shadow-md active:scale-95 flex items-center gap-2",
+                showDashboard ? "bg-black text-white border-black" : "bg-white text-black border-gray-100 hover:bg-gray-50"
+              )}
+              title="Dashboard"
+            >
+              <LayoutDashboard className="w-5 h-5" />
+              <span className="text-xs font-bold uppercase tracking-widest hidden sm:inline">Dashboard</span>
+            </button>
+            <button 
               onClick={() => setShowExportModal(true)}
               className="p-3 bg-white hover:bg-gray-50 rounded-xl text-black transition-all border border-gray-100 shadow-sm hover:shadow-md active:scale-95 flex items-center gap-2"
               title="Export CSV"
@@ -393,7 +450,99 @@ export default function App() {
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-6 py-8 grid grid-cols-1 lg:grid-cols-12 gap-8">
+      <main className="max-w-7xl mx-auto px-6 py-8">
+        {showDashboard && stats ? (
+          <motion.div 
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="space-y-8 mb-12"
+          >
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="modern-card p-6 bg-white">
+                <div className="flex items-center gap-4 mb-4">
+                  <div className="w-10 h-10 bg-gray-50 rounded-xl flex items-center justify-center">
+                    <TrendingUp className="w-5 h-5 text-black" />
+                  </div>
+                  <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest">Total Revenue</h3>
+                </div>
+                <p className="text-3xl font-black text-black">₹{stats.totalAmount.toLocaleString()}</p>
+                <p className="text-[10px] font-bold text-gray-400 mt-2 uppercase tracking-tighter">Across {stats.totalCount} Invoices</p>
+              </div>
+              <div className="modern-card p-6 bg-white">
+                <div className="flex items-center gap-4 mb-4">
+                  <div className="w-10 h-10 bg-green-50 rounded-xl flex items-center justify-center">
+                    <CheckCircle2 className="w-5 h-5 text-green-600" />
+                  </div>
+                  <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest">Paid Amount</h3>
+                </div>
+                <p className="text-3xl font-black text-black">₹{stats.paidAmount.toLocaleString()}</p>
+                <p className="text-[10px] font-bold text-green-600 mt-2 uppercase tracking-tighter">{stats.paidCount} Paid</p>
+              </div>
+              <div className="modern-card p-6 bg-white">
+                <div className="flex items-center gap-4 mb-4">
+                  <div className="w-10 h-10 bg-red-50 rounded-xl flex items-center justify-center">
+                    <Clock className="w-5 h-5 text-red-600" />
+                  </div>
+                  <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest">Pending Amount</h3>
+                </div>
+                <p className="text-3xl font-black text-black">₹{stats.unpaidAmount.toLocaleString()}</p>
+                <p className="text-[10px] font-bold text-red-600 mt-2 uppercase tracking-tighter">{stats.unpaidCount} Pending</p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+              <div className="modern-card p-8 bg-white h-[400px]">
+                <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-8">Revenue Distribution</h3>
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={[
+                    { name: 'Paid', amount: stats.paidAmount },
+                    { name: 'Unpaid', amount: stats.unpaidAmount }
+                  ]}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
+                    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: 'bold' }} />
+                    <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: 'bold' }} />
+                    <Tooltip 
+                      contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
+                      cursor={{ fill: '#f9fafb' }}
+                    />
+                    <Bar dataKey="amount" radius={[4, 4, 0, 0]}>
+                      <Cell fill="#000000" />
+                      <Cell fill="#e5e7eb" />
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+
+              <div className="modern-card p-8 bg-white h-[400px]">
+                <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-8">Invoice Status</h3>
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={[
+                        { name: 'Paid', value: stats.paidCount },
+                        { name: 'Unpaid', value: stats.unpaidCount }
+                      ]}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={60}
+                      outerRadius={100}
+                      paddingAngle={5}
+                      dataKey="value"
+                    >
+                      <Cell fill="#000000" />
+                      <Cell fill="#e5e7eb" />
+                    </Pie>
+                    <Tooltip 
+                      contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
+                    />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          </motion.div>
+        ) : null}
+
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
         {/* Sidebar / List */}
         <div className="lg:col-span-4 space-y-6">
           <div className="space-y-4">
@@ -612,6 +761,12 @@ export default function App() {
                           <span className="text-sm text-gray-400 font-medium">UPI ID</span>
                           <span className="text-sm font-mono font-bold text-black bg-gray-100 px-3 py-1 rounded-xl">{selectedInvoice.payeeVpa}</span>
                         </div>
+                        {(selectedInvoice as any).location && (
+                          <div className="flex justify-between items-center">
+                            <span className="text-sm text-gray-400 font-medium">Location</span>
+                            <span className="text-sm font-bold text-black">{(selectedInvoice as any).location}</span>
+                          </div>
+                        )}
                       </div>
                     </section>
 
@@ -693,7 +848,137 @@ export default function App() {
             )}
           </AnimatePresence>
         </div>
-      </main>
+      </div>
+    </main>
+
+      {/* GEO Content: How it Works & FAQ */}
+      <section className="max-w-7xl mx-auto px-6 py-20 border-t border-gray-100">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-20">
+          <div>
+            <h2 className="text-3xl font-black tracking-tighter text-black uppercase mb-8">How it Works</h2>
+            <div className="space-y-8">
+              <div className="flex gap-6">
+                <div className="w-10 h-10 bg-black text-white rounded-full flex items-center justify-center font-black shrink-0">1</div>
+                <div>
+                  <h3 className="font-bold text-black mb-1">Create Invoice</h3>
+                  <p className="text-sm text-gray-500 leading-relaxed">Enter customer details, amount, and your UPI VPA. Our system instantly generates a secure, unique invoice ID.</p>
+                </div>
+              </div>
+              <div className="flex gap-6">
+                <div className="w-10 h-10 bg-black text-white rounded-full flex items-center justify-center font-black shrink-0">2</div>
+                <div>
+                  <h3 className="font-bold text-black mb-1">Generate Dynamic QR</h3>
+                  <p className="text-sm text-gray-500 leading-relaxed">A dynamic UPI QR code is created specifically for that invoice. It includes the exact amount and invoice ID for easy reconciliation.</p>
+                </div>
+              </div>
+              <div className="flex gap-6">
+                <div className="w-10 h-10 bg-black text-white rounded-full flex items-center justify-center font-black shrink-0">3</div>
+                <div>
+                  <h3 className="font-bold text-black mb-1">Get Paid Instantly</h3>
+                  <p className="text-sm text-gray-500 leading-relaxed">Share the QR or download the professional PDF invoice. Payments go directly to your linked bank account via UPI.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <h2 className="text-3xl font-black tracking-tighter text-black uppercase mb-8">Key Benefits</h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+              <div className="p-6 bg-white border border-gray-100 rounded-2xl shadow-sm">
+                <ShieldCheck className="w-6 h-6 text-black mb-3" />
+                <h4 className="font-bold text-black mb-1">Zero Commission</h4>
+                <p className="text-xs text-gray-500">UPI is free. We don't charge any transaction fees or commissions on your payments.</p>
+              </div>
+              <div className="p-6 bg-white border border-gray-100 rounded-2xl shadow-sm">
+                <Clock className="w-6 h-6 text-black mb-3" />
+                <h4 className="font-bold text-black mb-1">Instant Settlement</h4>
+                <p className="text-xs text-gray-500">Money moves directly from the customer's bank to yours. No waiting for settlement cycles.</p>
+              </div>
+              <div className="p-6 bg-white border border-gray-100 rounded-2xl shadow-sm">
+                <FileText className="w-6 h-6 text-black mb-3" />
+                <h4 className="font-bold text-black mb-1">Professional PDF</h4>
+                <p className="text-xs text-gray-500">Generate high-quality, minimalist black & white invoices that look professional and are easy to print.</p>
+              </div>
+              <div className="p-6 bg-white border border-gray-100 rounded-2xl shadow-sm">
+                <Search className="w-6 h-6 text-black mb-3" />
+                <h4 className="font-bold text-black mb-1">Easy Tracking</h4>
+                <p className="text-xs text-gray-500">Keep track of paid and unpaid invoices with a clean dashboard and powerful search tools.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* GEO Content: Use Cases & FAQ */}
+      <section className="max-w-7xl mx-auto px-6 py-20 border-t border-gray-100 bg-gray-50/30">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-20">
+          <div>
+            <h2 className="text-3xl font-black tracking-tighter text-black uppercase mb-8">Who is it for?</h2>
+            <div className="grid grid-cols-1 gap-4">
+              <div className="flex items-start gap-4 p-4 bg-white rounded-2xl border border-gray-100">
+                <div className="w-10 h-10 bg-gray-50 rounded-xl flex items-center justify-center shrink-0">
+                  <User className="w-5 h-5 text-black" />
+                </div>
+                <div>
+                  <h4 className="font-bold text-black">Freelancers</h4>
+                  <p className="text-xs text-gray-500">Perfect for designers, developers, and consultants who need a quick way to bill clients via UPI.</p>
+                </div>
+              </div>
+              <div className="flex items-start gap-4 p-4 bg-white rounded-2xl border border-gray-100">
+                <div className="w-10 h-10 bg-gray-50 rounded-xl flex items-center justify-center shrink-0">
+                  <QrCode className="w-5 h-5 text-black" />
+                </div>
+                <div>
+                  <h4 className="font-bold text-black">Small Businesses</h4>
+                  <p className="text-xs text-gray-500">Ideal for retail shops, service providers, and local vendors looking to digitize their billing.</p>
+                </div>
+              </div>
+              <div className="flex items-start gap-4 p-4 bg-white rounded-2xl border border-gray-100">
+                <div className="w-10 h-10 bg-gray-50 rounded-xl flex items-center justify-center shrink-0">
+                  <FileText className="w-5 h-5 text-black" />
+                </div>
+                <div>
+                  <h4 className="font-bold text-black">Service Providers</h4>
+                  <p className="text-xs text-gray-500">Great for tutors, trainers, and repair services who collect payments on-the-go.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <h2 className="text-3xl font-black tracking-tighter text-black uppercase mb-8">Frequently Asked Questions</h2>
+            <div className="space-y-6">
+              <details className="group border-b border-gray-100 pb-4 cursor-pointer">
+                <summary className="flex justify-between items-center font-bold text-black list-none">
+                  Is UPISync secure for payments?
+                  <ChevronDown className="w-4 h-4 text-gray-400 group-open:rotate-180 transition-transform" />
+                </summary>
+                <p className="text-sm text-gray-500 mt-3 leading-relaxed">
+                  Yes. UPISync only generates the payment instruction (QR code). The actual transaction happens securely within the user's UPI-enabled banking app. We never touch your money.
+                </p>
+              </details>
+              <details className="group border-b border-gray-100 pb-4 cursor-pointer">
+                <summary className="flex justify-between items-center font-bold text-black list-none">
+                  What UPI apps are supported?
+                  <ChevronDown className="w-4 h-4 text-gray-400 group-open:rotate-180 transition-transform" />
+                </summary>
+                <p className="text-sm text-gray-500 mt-3 leading-relaxed">
+                  Our dynamic QR codes follow the standard NPCI UPI specifications, meaning they work with GPay, PhonePe, Paytm, Amazon Pay, and all BHIM-enabled banking apps.
+                </p>
+              </details>
+              <details className="group border-b border-gray-100 pb-4 cursor-pointer">
+                <summary className="flex justify-between items-center font-bold text-black list-none">
+                  Can I export my billing data?
+                  <ChevronDown className="w-4 h-4 text-gray-400 group-open:rotate-180 transition-transform" />
+                </summary>
+                <p className="text-sm text-gray-500 mt-3 leading-relaxed">
+                  Absolutely. You can download individual professional PDF invoices or export your entire billing history as a CSV file for accounting and tax purposes.
+                </p>
+              </details>
+            </div>
+          </div>
+        </div>
+      </section>
 
       {/* Export Modal */}
       <AnimatePresence>
@@ -835,16 +1120,26 @@ export default function App() {
               </div>
               <form onSubmit={handleCreateInvoice} className="p-6 space-y-5">
                 <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-1.5">
+                  <div className="space-y-1.5 relative">
                     <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Invoice ID</label>
-                    <input
-                      required
-                      type="text"
-                      placeholder="INV-001"
-                      className="modern-input"
-                      value={formData.id}
-                      onChange={e => setFormData({ ...formData, id: e.target.value })}
-                    />
+                    <div className="relative">
+                      <input
+                        required
+                        type="text"
+                        placeholder="INV-001"
+                        className="modern-input pr-10"
+                        value={formData.id}
+                        onChange={e => setFormData({ ...formData, id: e.target.value })}
+                      />
+                      <button 
+                        type="button"
+                        onClick={regenerateId}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 p-1.5 hover:bg-gray-100 rounded-lg text-gray-400 hover:text-black transition-all"
+                        title="Regenerate ID"
+                      >
+                        <RefreshCw className="w-4 h-4" />
+                      </button>
+                    </div>
                   </div>
                   <div className="space-y-1.5">
                     <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Amount (INR)</label>
@@ -868,6 +1163,17 @@ export default function App() {
                     className="modern-input"
                     value={formData.customerName}
                     onChange={e => setFormData({ ...formData, customerName: e.target.value })}
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Location (Optional)</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Hyderabad, India"
+                    className="modern-input"
+                    value={formData.location}
+                    onChange={e => setFormData({ ...formData, location: e.target.value })}
                   />
                 </div>
 

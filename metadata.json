@@ -1,5 +1,5 @@
 {
   "name": "UPI Billing & QR Generator",
   "description": "A dynamic UPI QR code generator and billing system with invoice tracking and PDF export.",
-  "requestFramePermissions": []
+  "requestFramePermissions": ["geolocation"]
 }
