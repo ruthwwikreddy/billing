@@ -18,13 +18,19 @@ db.exec(`
     payeeName TEXT NOT NULL,
     payeeVpa TEXT NOT NULL,
     status TEXT DEFAULT 'unpaid',
-    location TEXT,
     createdAt DATETIME DEFAULT CURRENT_TIMESTAMP
   )
 `);
 
+// Migration: Add productOrService if it doesn't exist
+try {
+  db.exec("ALTER TABLE invoices ADD COLUMN productOrService TEXT");
+} catch (e) {
+  // Column already exists
+}
+
 // Clear existing data to start fresh as requested
-db.exec("DELETE FROM invoices");
+// db.exec("DELETE FROM invoices");
 
 app.use(cors());
 app.use(bodyParser.json());
@@ -54,14 +60,16 @@ app.get("/api/stats", (req, res) => {
 });
 
 app.post("/api/invoices", (req, res) => {
-  const { id, customerName, amount, payeeName, payeeVpa, location } = req.body;
+  const { id, customerName, amount, payeeName, payeeVpa, productOrService } = req.body;
+  console.log("Creating invoice:", { id, customerName, amount, payeeName, payeeVpa, productOrService });
   try {
     const stmt = db.prepare(
-      "INSERT INTO invoices (id, customerName, amount, payeeName, payeeVpa, location) VALUES (?, ?, ?, ?, ?, ?)"
+      "INSERT INTO invoices (id, customerName, amount, payeeName, payeeVpa, productOrService) VALUES (?, ?, ?, ?, ?, ?)"
     );
-    stmt.run(id, customerName, amount, payeeName, payeeVpa, location);
+    stmt.run(id, customerName, amount, payeeName, payeeVpa, productOrService);
     res.status(201).json({ message: "Invoice created successfully" });
   } catch (error) {
+    console.error("Error creating invoice:", error);
     res.status(400).json({ error: "Invoice ID already exists or invalid data" });
   }
 });

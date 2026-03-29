@@ -52,6 +52,7 @@ interface Invoice {
   payeeVpa: string;
   status: 'paid' | 'unpaid';
   createdAt: string;
+  productOrService?: string;
 }
 
 interface Stats {
@@ -87,6 +88,7 @@ export default function App() {
   const [exportFields, setExportFields] = useState({
     id: true,
     customerName: true,
+    productOrService: true,
     amount: true,
     status: true,
     createdAt: true,
@@ -104,7 +106,7 @@ export default function App() {
     amount: '',
     payeeName: DEFAULT_PAYEE_NAME,
     payeeVpa: DEFAULT_PAYEE_VPA,
-    location: ''
+    productOrService: ''
   });
 
   const regenerateId = () => {
@@ -165,13 +167,20 @@ export default function App() {
   const handleCreateInvoice = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+    const amount = parseFloat(formData.amount);
+    if (isNaN(amount) || amount <= 0) {
+      alert("Please enter a valid amount");
+      setLoading(false);
+      return;
+    }
+
     try {
       const res = await fetch('/api/invoices', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...formData,
-          amount: parseFloat(formData.amount)
+          amount
         }),
       });
       if (res.ok) {
@@ -182,7 +191,7 @@ export default function App() {
           amount: '', 
           payeeName: DEFAULT_PAYEE_NAME, 
           payeeVpa: DEFAULT_PAYEE_VPA,
-          location: ''
+          productOrService: ''
         });
         fetchInvoices();
       } else {
@@ -282,6 +291,7 @@ export default function App() {
     .filter(inv => 
       inv.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
       inv.customerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (inv.productOrService && inv.productOrService.toLowerCase().includes(searchQuery.toLowerCase())) ||
       inv.amount.toString().includes(searchQuery)
     )
     .sort((a, b) => {
@@ -343,7 +353,7 @@ export default function App() {
     
     // Table Content
     doc.setFont('helvetica', 'normal');
-    doc.text(`Service/Product for ${invoice.customerName}`, 20, 125);
+    doc.text(invoice.productOrService || `Service/Product for ${invoice.customerName}`, 20, 125);
     doc.setFont('helvetica', 'bold');
     doc.text(`INR ${invoice.amount.toFixed(2)}`, 160, 125, { align: 'right' });
     
@@ -761,10 +771,10 @@ export default function App() {
                           <span className="text-sm text-gray-400 font-medium">UPI ID</span>
                           <span className="text-sm font-mono font-bold text-black bg-gray-100 px-3 py-1 rounded-xl">{selectedInvoice.payeeVpa}</span>
                         </div>
-                        {(selectedInvoice as any).location && (
+                        {selectedInvoice.productOrService && (
                           <div className="flex justify-between items-center">
-                            <span className="text-sm text-gray-400 font-medium">Location</span>
-                            <span className="text-sm font-bold text-black">{(selectedInvoice as any).location}</span>
+                            <span className="text-sm text-gray-400 font-medium">Product/Service</span>
+                            <span className="text-sm font-bold text-black">{selectedInvoice.productOrService}</span>
                           </div>
                         )}
                       </div>
@@ -1167,13 +1177,14 @@ export default function App() {
                 </div>
 
                 <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Location (Optional)</label>
+                  <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Product or Service</label>
                   <input
+                    required
                     type="text"
-                    placeholder="e.g. Hyderabad, India"
+                    placeholder="e.g. Web Development, Consulting"
                     className="modern-input"
-                    value={formData.location}
-                    onChange={e => setFormData({ ...formData, location: e.target.value })}
+                    value={formData.productOrService}
+                    onChange={e => setFormData({ ...formData, productOrService: e.target.value })}
                   />
                 </div>
 
