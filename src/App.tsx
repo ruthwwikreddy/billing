@@ -25,7 +25,13 @@ import {
   Check,
   LayoutDashboard,
   TrendingUp,
-  PieChart as PieChartIcon
+  PieChart as PieChartIcon,
+  Moon,
+  Sun,
+  Users,
+  Repeat,
+  Settings,
+  Briefcase
 } from 'lucide-react';
 import QRCode from 'qrcode';
 import { jsPDF } from 'jspdf';
@@ -43,6 +49,27 @@ import {
   PieChart,
   Pie
 } from 'recharts';
+
+interface Client {
+  id: string;
+  name: string;
+  email: string;
+  category: string;
+  createdAt: string;
+}
+
+interface RecurringInvoice {
+  id: string;
+  clientId: string;
+  customerName: string;
+  amount: number;
+  payeeName: string;
+  payeeVpa: string;
+  productOrService: string;
+  frequency: 'weekly' | 'monthly';
+  nextRunDate: string;
+  createdAt: string;
+}
 
 interface Invoice {
   id: string;
@@ -69,7 +96,12 @@ const DEFAULT_PAYEE_VPA = "7842906633@ybl";
 
 export default function App() {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [clients, setClients] = useState<Client[]>([]);
+  const [recurringInvoices, setRecurringInvoices] = useState<RecurringInvoice[]>([]);
   const [showForm, setShowForm] = useState(false);
+  const [showClientsModal, setShowClientsModal] = useState(false);
+  const [showRecurringModal, setShowRecurringModal] = useState(false);
+  const [darkMode, setDarkMode] = useState(false);
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
   const [loading, setLoading] = useState(false);
   const [qrDataUrl, setQrDataUrl] = useState<string>('');
@@ -99,6 +131,21 @@ export default function App() {
   // QR Feedback State
   const [isScanned, setIsScanned] = useState(false);
 
+  // Client Form State
+  const [clientFormData, setClientFormData] = useState({
+    name: '',
+    email: '',
+    category: 'General'
+  });
+
+  // Recurring Form State
+  const [recurringFormData, setRecurringFormData] = useState({
+    clientId: '',
+    amount: '',
+    frequency: 'monthly' as 'weekly' | 'monthly',
+    productOrService: ''
+  });
+
   // Form state
   const [formData, setFormData] = useState({
     id: Math.random().toString(36).substring(2, 10).toUpperCase(),
@@ -106,7 +153,9 @@ export default function App() {
     amount: '',
     payeeName: DEFAULT_PAYEE_NAME,
     payeeVpa: DEFAULT_PAYEE_VPA,
-    productOrService: ''
+    productOrService: '',
+    isRecurring: false,
+    frequency: 'monthly' as 'weekly' | 'monthly'
   });
 
   const regenerateId = () => {
@@ -117,8 +166,58 @@ export default function App() {
   };
 
   useEffect(() => {
+    const checkHealth = async () => {
+      try {
+        const res = await fetch('/health');
+        const data = await res.json();
+        console.log('Server health check:', data);
+      } catch (error) {
+        console.error('Server health check failed:', error);
+      }
+    };
+    checkHealth();
     fetchInvoices();
+    fetchClients();
+    fetchRecurringInvoices();
+    
+    // Dark mode initialization
+    const savedDarkMode = localStorage.getItem('darkMode') === 'true';
+    setDarkMode(savedDarkMode);
+    if (savedDarkMode) {
+      document.documentElement.classList.add('dark');
+    }
   }, []);
+
+  const toggleDarkMode = () => {
+    const newMode = !darkMode;
+    setDarkMode(newMode);
+    localStorage.setItem('darkMode', String(newMode));
+    if (newMode) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+  };
+
+  const fetchClients = async () => {
+    try {
+      const res = await fetch('/api/clients');
+      const data = await res.json();
+      setClients(data);
+    } catch (error) {
+      console.error('Failed to fetch clients', error);
+    }
+  };
+
+  const fetchRecurringInvoices = async () => {
+    try {
+      const res = await fetch('/api/recurring-invoices');
+      const data = await res.json();
+      setRecurringInvoices(data);
+    } catch (error) {
+      console.error('Failed to fetch recurring invoices', error);
+    }
+  };
 
   useEffect(() => {
     if (selectedInvoice) {
@@ -184,6 +283,32 @@ export default function App() {
         }),
       });
       if (res.ok) {
+        // If recurring is checked, also set up a recurring invoice
+        if (formData.isRecurring) {
+          const client = clients.find(c => c.name === formData.customerName);
+          if (client) {
+            const nextRun = new Date();
+            if (formData.frequency === 'weekly') nextRun.setDate(nextRun.getDate() + 7);
+            else nextRun.setMonth(nextRun.getMonth() + 1);
+
+            await fetch('/api/recurring-invoices', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                id: Math.random().toString(36).substring(2, 10).toUpperCase(),
+                clientId: client.id,
+                amount,
+                payeeName: formData.payeeName,
+                payeeVpa: formData.payeeVpa,
+                productOrService: formData.productOrService,
+                frequency: formData.frequency,
+                nextRunDate: nextRun.toISOString()
+              }),
+            });
+            fetchRecurringInvoices();
+          }
+        }
+
         setShowForm(false);
         setFormData({ 
           id: Math.random().toString(36).substring(2, 10).toUpperCase(), 
@@ -191,7 +316,9 @@ export default function App() {
           amount: '', 
           payeeName: DEFAULT_PAYEE_NAME, 
           payeeVpa: DEFAULT_PAYEE_VPA,
-          productOrService: ''
+          productOrService: '',
+          isRecurring: false,
+          frequency: 'monthly'
         });
         fetchInvoices();
       } else {
@@ -299,6 +426,76 @@ export default function App() {
       if (sortBy === 'amount') return b.amount - a.amount;
       return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
     });
+
+  const handleCreateClient = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const res = await fetch('/api/clients', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: Math.random().toString(36).substring(2, 10).toUpperCase(),
+          ...clientFormData
+        }),
+      });
+      if (res.ok) {
+        setClientFormData({ name: '', email: '', category: 'General' });
+        fetchClients();
+      }
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
+  const deleteClient = async (id: string) => {
+    if (!confirm("Are you sure? This will not delete their invoices.")) return;
+    try {
+      await fetch(`/api/clients/${id}`, { method: 'DELETE' });
+      fetchClients();
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
+  const handleCreateRecurring = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const amount = parseFloat(recurringFormData.amount);
+    if (isNaN(amount) || amount <= 0) return;
+
+    const nextRun = new Date();
+    if (recurringFormData.frequency === 'weekly') nextRun.setDate(nextRun.getDate() + 7);
+    else nextRun.setMonth(nextRun.getMonth() + 1);
+
+    try {
+      const res = await fetch('/api/recurring-invoices', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: Math.random().toString(36).substring(2, 10).toUpperCase(),
+          ...recurringFormData,
+          amount,
+          payeeName: DEFAULT_PAYEE_NAME,
+          payeeVpa: DEFAULT_PAYEE_VPA,
+          nextRunDate: nextRun.toISOString()
+        }),
+      });
+      if (res.ok) {
+        setRecurringFormData({ clientId: '', amount: '', frequency: 'monthly', productOrService: '' });
+        fetchRecurringInvoices();
+      }
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
+  const deleteRecurring = async (id: string) => {
+    try {
+      await fetch(`/api/recurring-invoices/${id}`, { method: 'DELETE' });
+      fetchRecurringInvoices();
+    } catch (error) {
+      console.error(error);
+    }
+  };
 
   const downloadPdf = (invoice: Invoice) => {
     const doc = new jsPDF();
@@ -430,6 +627,29 @@ export default function App() {
             <h1 className="text-2xl font-black tracking-tighter text-black uppercase">UPISync</h1>
           </div>
           <div className="flex gap-2">
+            <button 
+              onClick={toggleDarkMode}
+              className="p-3 bg-white dark:bg-zinc-900 hover:bg-gray-50 dark:hover:bg-zinc-800 rounded-xl text-black dark:text-white transition-all border border-gray-100 dark:border-zinc-800 shadow-sm hover:shadow-md active:scale-95 flex items-center gap-2"
+              title="Toggle Dark Mode"
+            >
+              {darkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+            </button>
+            <button 
+              onClick={() => setShowClientsModal(true)}
+              className="p-3 bg-white dark:bg-zinc-900 hover:bg-gray-50 dark:hover:bg-zinc-800 rounded-xl text-black dark:text-white transition-all border border-gray-100 dark:border-zinc-800 shadow-sm hover:shadow-md active:scale-95 flex items-center gap-2"
+              title="Manage Clients"
+            >
+              <Users className="w-5 h-5" />
+              <span className="text-xs font-bold uppercase tracking-widest hidden sm:inline">Clients</span>
+            </button>
+            <button 
+              onClick={() => setShowRecurringModal(true)}
+              className="p-3 bg-white dark:bg-zinc-900 hover:bg-gray-50 dark:hover:bg-zinc-800 rounded-xl text-black dark:text-white transition-all border border-gray-100 dark:border-zinc-800 shadow-sm hover:shadow-md active:scale-95 flex items-center gap-2"
+              title="Recurring Invoices"
+            >
+              <Repeat className="w-5 h-5" />
+              <span className="text-xs font-bold uppercase tracking-widest hidden sm:inline">Recurring</span>
+            </button>
             <button 
               onClick={() => setShowDashboard(!showDashboard)}
               className={cn(
@@ -1114,24 +1334,42 @@ export default function App() {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={() => setShowForm(false)}
-              className="absolute inset-0 bg-gray-900/40 backdrop-blur-sm"
+              className="absolute inset-0 bg-gray-900/40 dark:bg-black/60 backdrop-blur-sm"
             />
             <motion.div
               initial={{ scale: 0.95, opacity: 0, y: 20 }}
               animate={{ scale: 1, opacity: 1, y: 0 }}
               exit={{ scale: 0.95, opacity: 0, y: 20 }}
-              className="relative bg-white w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden border border-gray-100"
+              className="relative bg-white dark:bg-zinc-900 w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden border border-gray-100 dark:border-zinc-800"
             >
-              <div className="p-6 border-b border-gray-100 flex justify-between items-center">
-                <h2 className="text-xl font-bold text-gray-900">Create Invoice</h2>
-                <button onClick={() => setShowForm(false)} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
+              <div className="p-6 border-b border-gray-100 dark:border-zinc-800 flex justify-between items-center">
+                <h2 className="text-xl font-bold text-gray-900 dark:text-white">Create Invoice</h2>
+                <button onClick={() => setShowForm(false)} className="p-2 hover:bg-gray-100 dark:hover:bg-zinc-800 rounded-full transition-colors">
                   <X className="w-5 h-5 text-gray-500" />
                 </button>
               </div>
-              <form onSubmit={handleCreateInvoice} className="p-6 space-y-5">
+              <form onSubmit={handleCreateInvoice} className="p-6 space-y-5 max-h-[80vh] overflow-y-auto custom-scrollbar">
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-gray-400 dark:text-zinc-500 uppercase tracking-widest">Select Client (Optional)</label>
+                  <select 
+                    className="modern-input"
+                    onChange={(e) => {
+                      const client = clients.find(c => c.id === e.target.value);
+                      if (client) {
+                        setFormData({ ...formData, customerName: client.name });
+                      }
+                    }}
+                  >
+                    <option value="">-- Select a saved client --</option>
+                    {clients.map(client => (
+                      <option key={client.id} value={client.id}>{client.name} ({client.category})</option>
+                    ))}
+                  </select>
+                </div>
+
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1.5 relative">
-                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Invoice ID</label>
+                    <label className="text-[10px] font-bold text-gray-400 dark:text-zinc-500 uppercase tracking-widest">Invoice ID</label>
                     <div className="relative">
                       <input
                         required
@@ -1144,7 +1382,7 @@ export default function App() {
                       <button 
                         type="button"
                         onClick={regenerateId}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 p-1.5 hover:bg-gray-100 rounded-lg text-gray-400 hover:text-black transition-all"
+                        className="absolute right-3 top-1/2 -translate-y-1/2 p-1.5 hover:bg-gray-100 dark:hover:bg-zinc-800 rounded-lg text-gray-400 hover:text-black dark:hover:text-white transition-all"
                         title="Regenerate ID"
                       >
                         <RefreshCw className="w-4 h-4" />
@@ -1152,7 +1390,7 @@ export default function App() {
                     </div>
                   </div>
                   <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Amount (INR)</label>
+                    <label className="text-[10px] font-bold text-gray-400 dark:text-zinc-500 uppercase tracking-widest">Amount (INR)</label>
                     <input
                       required
                       type="number"
@@ -1165,7 +1403,7 @@ export default function App() {
                 </div>
 
                 <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Customer Name</label>
+                  <label className="text-[10px] font-bold text-gray-400 dark:text-zinc-500 uppercase tracking-widest">Customer Name</label>
                   <input
                     required
                     type="text"
@@ -1177,7 +1415,7 @@ export default function App() {
                 </div>
 
                 <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Product or Service</label>
+                  <label className="text-[10px] font-bold text-gray-400 dark:text-zinc-500 uppercase tracking-widest">Product or Service</label>
                   <input
                     required
                     type="text"
@@ -1188,8 +1426,53 @@ export default function App() {
                   />
                 </div>
 
+                <div className="p-4 bg-gray-50 dark:bg-zinc-800/50 rounded-2xl border border-gray-100 dark:border-zinc-800">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-2">
+                      <Repeat className="w-4 h-4 text-gray-500" />
+                      <span className="text-sm font-semibold">Make Recurring</span>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input 
+                        type="checkbox" 
+                        className="sr-only peer"
+                        checked={formData.isRecurring}
+                        onChange={(e) => setFormData({ ...formData, isRecurring: e.target.checked })}
+                      />
+                      <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-zinc-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-zinc-600 peer-checked:bg-black dark:peer-checked:bg-white dark:after:bg-zinc-900"></div>
+                    </label>
+                  </div>
+                  
+                  {formData.isRecurring && (
+                    <motion.div 
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                      className="space-y-3"
+                    >
+                      <label className="block text-[10px] font-bold text-gray-400 dark:text-zinc-500 uppercase tracking-widest mb-1">Frequency</label>
+                      <div className="flex gap-2">
+                        {['weekly', 'monthly'].map((freq) => (
+                          <button
+                            key={freq}
+                            type="button"
+                            onClick={() => setFormData({ ...formData, frequency: freq as any })}
+                            className={cn(
+                              "flex-1 py-2 rounded-lg text-[10px] font-bold uppercase tracking-widest border transition-all",
+                              formData.frequency === freq 
+                                ? "bg-black dark:bg-white text-white dark:text-black border-black dark:border-white" 
+                                : "bg-white dark:bg-zinc-900 text-gray-500 border-gray-200 dark:border-zinc-800"
+                            )}
+                          >
+                            {freq}
+                          </button>
+                        ))}
+                      </div>
+                    </motion.div>
+                  )}
+                </div>
+
                 <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Payee Name</label>
+                  <label className="text-[10px] font-bold text-gray-400 dark:text-zinc-500 uppercase tracking-widest">Payee Name</label>
                   <input
                     required
                     type="text"
@@ -1201,7 +1484,7 @@ export default function App() {
                 </div>
 
                 <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">UPI VPA</label>
+                  <label className="text-[10px] font-bold text-gray-400 dark:text-zinc-500 uppercase tracking-widest">UPI VPA</label>
                   <input
                     required
                     type="text"
@@ -1216,7 +1499,7 @@ export default function App() {
                   <button
                     disabled={loading}
                     type="submit"
-                    className="w-full py-4 modern-button shadow-2xl shadow-gray-200 text-lg uppercase tracking-widest"
+                    className="w-full py-4 modern-button shadow-2xl shadow-gray-200 dark:shadow-none text-lg uppercase tracking-widest"
                   >
                     {loading ? 'Processing...' : 'Create Invoice'}
                   </button>
@@ -1242,6 +1525,249 @@ export default function App() {
           <p className="text-xs text-gray-400 font-medium">© 2026 UPISync. Built for speed.</p>
         </div>
       </footer>
+      {/* Clients Management Modal */}
+      <AnimatePresence>
+        {showClientsModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowClientsModal(false)}
+              className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            />
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.9, opacity: 0, y: 20 }}
+              className="relative w-full max-w-2xl bg-white dark:bg-zinc-900 rounded-3xl shadow-2xl overflow-hidden"
+            >
+              <div className="p-6 border-b border-gray-100 dark:border-zinc-800 flex justify-between items-center">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-black dark:bg-white rounded-xl flex items-center justify-center">
+                    <Users className="w-5 h-5 text-white dark:text-black" />
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-bold">Client Management</h2>
+                    <p className="text-xs text-gray-500 uppercase tracking-widest font-bold">Save and organize customers</p>
+                  </div>
+                </div>
+                <button onClick={() => setShowClientsModal(false)} className="p-2 hover:bg-gray-100 dark:hover:bg-zinc-800 rounded-full transition-colors">
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+
+              <div className="p-6 max-h-[70vh] overflow-y-auto">
+                <form onSubmit={handleCreateClient} className="mb-8 p-4 bg-gray-50 dark:bg-zinc-800/50 rounded-2xl border border-gray-100 dark:border-zinc-800">
+                  <h3 className="text-sm font-bold uppercase tracking-widest mb-4">Add New Client</h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <input 
+                      type="text" 
+                      placeholder="Name" 
+                      className="modern-input text-sm"
+                      value={clientFormData.name}
+                      onChange={e => setClientFormData({...clientFormData, name: e.target.value})}
+                      required
+                    />
+                    <input 
+                      type="email" 
+                      placeholder="Email" 
+                      className="modern-input text-sm"
+                      value={clientFormData.email}
+                      onChange={e => setClientFormData({...clientFormData, email: e.target.value})}
+                      required
+                    />
+                    <select 
+                      className="modern-input text-sm"
+                      value={clientFormData.category}
+                      onChange={e => setClientFormData({...clientFormData, category: e.target.value})}
+                    >
+                      <option value="General">General</option>
+                      <option value="VIP">VIP</option>
+                      <option value="Corporate">Corporate</option>
+                      <option value="Subscription">Subscription</option>
+                    </select>
+                  </div>
+                  <button type="submit" className="modern-button w-full mt-3 py-2 text-sm">
+                    <Plus className="w-4 h-4" /> Add Client
+                  </button>
+                </form>
+
+                <div className="space-y-3">
+                  {clients.length === 0 ? (
+                    <div className="text-center py-12 text-gray-400">
+                      <Users className="w-12 h-12 mx-auto mb-3 opacity-20" />
+                      <p>No clients saved yet</p>
+                    </div>
+                  ) : (
+                    clients.map(client => (
+                      <div key={client.id} className="flex items-center justify-between p-4 border border-gray-100 dark:border-zinc-800 rounded-2xl hover:bg-gray-50 dark:hover:bg-zinc-800/50 transition-colors">
+                        <div className="flex items-center gap-4">
+                          <div className="w-10 h-10 bg-gray-100 dark:bg-zinc-800 rounded-full flex items-center justify-center font-bold text-gray-500">
+                            {client.name.charAt(0)}
+                          </div>
+                          <div>
+                            <h4 className="font-bold">{client.name}</h4>
+                            <p className="text-xs text-gray-500">{client.email}</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <span className="modern-badge bg-gray-100 dark:bg-zinc-800 text-gray-500">{client.category}</span>
+                          <button 
+                            onClick={() => deleteClient(client.id)}
+                            className="p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-lg transition-colors"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Recurring Invoices Modal */}
+      <AnimatePresence>
+        {showRecurringModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowRecurringModal(false)}
+              className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            />
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.9, opacity: 0, y: 20 }}
+              className="relative w-full max-w-3xl bg-white dark:bg-zinc-900 rounded-3xl shadow-2xl overflow-hidden"
+            >
+              <div className="p-6 border-b border-gray-100 dark:border-zinc-800 flex justify-between items-center">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-black dark:bg-white rounded-xl flex items-center justify-center">
+                    <Repeat className="w-5 h-5 text-white dark:text-black" />
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-bold">Recurring Invoices</h2>
+                    <p className="text-xs text-gray-500 uppercase tracking-widest font-bold">Automated billing schedules</p>
+                  </div>
+                </div>
+                <button onClick={() => setShowRecurringModal(false)} className="p-2 hover:bg-gray-100 dark:hover:bg-zinc-800 rounded-full transition-colors">
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+
+              <div className="p-6 max-h-[70vh] overflow-y-auto">
+                <form onSubmit={handleCreateRecurring} className="mb-8 p-5 bg-gray-50 dark:bg-zinc-800/50 rounded-2xl border border-gray-100 dark:border-zinc-800">
+                  <h3 className="text-sm font-bold uppercase tracking-widest mb-4">New Recurring Schedule</h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+                    <div>
+                      <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">Client</label>
+                      <select 
+                        className="modern-input text-sm"
+                        value={recurringFormData.clientId}
+                        onChange={e => setRecurringFormData({...recurringFormData, clientId: e.target.value})}
+                        required
+                      >
+                        <option value="">Select Client</option>
+                        {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">Service/Product</label>
+                      <input 
+                        type="text" 
+                        placeholder="e.g. Monthly Maintenance" 
+                        className="modern-input text-sm"
+                        value={recurringFormData.productOrService}
+                        onChange={e => setRecurringFormData({...recurringFormData, productOrService: e.target.value})}
+                        required
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">Amount (₹)</label>
+                      <input 
+                        type="number" 
+                        placeholder="0.00" 
+                        className="modern-input text-sm"
+                        value={recurringFormData.amount}
+                        onChange={e => setRecurringFormData({...recurringFormData, amount: e.target.value})}
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">Frequency</label>
+                      <div className="flex gap-2">
+                        {['weekly', 'monthly'].map((freq) => (
+                          <button
+                            key={freq}
+                            type="button"
+                            onClick={() => setRecurringFormData({ ...recurringFormData, frequency: freq as any })}
+                            className={cn(
+                              "flex-1 py-2.5 rounded-xl text-xs font-bold uppercase tracking-widest border transition-all",
+                              recurringFormData.frequency === freq 
+                                ? "bg-black dark:bg-white text-white dark:text-black border-black dark:border-white" 
+                                : "bg-white dark:bg-zinc-900 text-gray-500 border-gray-200 dark:border-zinc-800"
+                            )}
+                          >
+                            {freq}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                  <button type="submit" className="modern-button w-full mt-5">
+                    <Plus className="w-5 h-5" /> Create Schedule
+                  </button>
+                </form>
+
+                <div className="space-y-4">
+                  {recurringInvoices.length === 0 ? (
+                    <div className="text-center py-12 text-gray-400">
+                      <Repeat className="w-12 h-12 mx-auto mb-3 opacity-20" />
+                      <p>No recurring invoices set up</p>
+                    </div>
+                  ) : (
+                    recurringInvoices.map(ri => (
+                      <div key={ri.id} className="p-5 border border-gray-100 dark:border-zinc-800 rounded-2xl hover:bg-gray-50 dark:hover:bg-zinc-800/50 transition-colors">
+                        <div className="flex justify-between items-start mb-3">
+                          <div>
+                            <h4 className="font-bold text-lg">{ri.customerName}</h4>
+                            <p className="text-sm text-gray-500">{ri.productOrService}</p>
+                          </div>
+                          <div className="text-right">
+                            <p className="font-bold text-lg">₹{ri.amount.toFixed(2)}</p>
+                            <span className="modern-badge bg-black dark:bg-white text-white dark:text-black">{ri.frequency}</span>
+                          </div>
+                        </div>
+                        <div className="flex items-center justify-between pt-3 border-t border-gray-100 dark:border-zinc-800">
+                          <div className="flex items-center gap-2 text-xs text-gray-500">
+                            <Calendar className="w-3 h-3" />
+                            <span>Next run: {new Date(ri.nextRunDate).toLocaleDateString()}</span>
+                          </div>
+                          <button 
+                            onClick={() => deleteRecurring(ri.id)}
+                            className="text-xs font-bold text-red-500 hover:underline"
+                          >
+                            Cancel Schedule
+                          </button>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

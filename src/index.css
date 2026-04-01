@@ -6,21 +6,37 @@
 }
 
 @layer base {
+  :root {
+    --bg: #FAFAFA;
+    --text: #000000;
+    --card-bg: #FFFFFF;
+    --border: #E5E5E5;
+    --muted: #9CA3AF;
+  }
+
+  .dark {
+    --bg: #09090B;
+    --text: #FAFAFA;
+    --card-bg: #18181B;
+    --border: #27272A;
+    --muted: #71717A;
+  }
+
   body {
-    @apply bg-[#FAFAFA] text-[#000000] antialiased;
+    @apply bg-[var(--bg)] text-[var(--text)] antialiased transition-colors duration-300;
   }
 }
 
 .modern-card {
-  @apply bg-white border border-[#E5E5E5] rounded-2xl shadow-[0_4px_20px_-4px_rgba(0,0,0,0.05)] hover:shadow-[0_8px_30px_-4px_rgba(0,0,0,0.08)] transition-all duration-300;
+  @apply bg-[var(--card-bg)] border border-[var(--border)] rounded-2xl shadow-[0_4px_20px_-4px_rgba(0,0,0,0.05)] hover:shadow-[0_8px_30px_-4px_rgba(0,0,0,0.08)] transition-all duration-300;
 }
 
 .modern-button {
-  @apply px-5 py-2.5 bg-black hover:bg-[#222222] text-white font-semibold rounded-xl transition-all duration-200 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2;
+  @apply px-5 py-2.5 bg-black dark:bg-white text-white dark:text-black font-semibold rounded-xl transition-all duration-200 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2;
 }
 
 .modern-input {
-  @apply w-full px-4 py-3 bg-white border border-[#E5E5E5] rounded-xl focus:ring-2 focus:ring-black focus:border-transparent outline-none transition-all placeholder:text-gray-400;
+  @apply w-full px-4 py-3 bg-[var(--card-bg)] text-[var(--text)] border border-[var(--border)] rounded-xl focus:ring-2 focus:ring-black dark:focus:ring-white focus:border-transparent outline-none transition-all placeholder:text-gray-400;
 }
 
 .modern-badge {
