@@ -36,12 +36,15 @@ app.use(cors());
 app.use(bodyParser.json());
 
 // API Routes
+console.log("Registering API routes...");
 app.get("/api/invoices", (req, res) => {
+  console.log("GET /api/invoices");
   const invoices = db.prepare("SELECT * FROM invoices ORDER BY createdAt DESC").all();
   res.json(invoices);
 });
 
 app.get("/api/stats", (req, res) => {
+  console.log("GET /api/stats");
   const totalInvoices = db.prepare("SELECT COUNT(*) as count FROM invoices").get() as { count: number };
   const paidInvoices = db.prepare("SELECT COUNT(*) as count FROM invoices WHERE status = 'paid'").get() as { count: number };
   const unpaidInvoices = db.prepare("SELECT COUNT(*) as count FROM invoices WHERE status = 'unpaid'").get() as { count: number };
