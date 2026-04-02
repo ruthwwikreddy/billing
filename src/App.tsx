@@ -120,7 +120,7 @@ export default function App() {
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
   const [loading, setLoading] = useState(false);
   const [qrDataUrl, setQrDataUrl] = useState<string>('');
-  const [showDashboard, setShowDashboard] = useState(false);
+  const [showDashboard, setShowDashboard] = useState(true);
   const [stats, setStats] = useState<Stats | null>(null);
   
   // New States
@@ -246,7 +246,7 @@ export default function App() {
   };
 
   const generateQrCode = async (invoice: Invoice) => {
-    const upiLink = `upi://pay?pa=${invoice.payeeVpa}&pn=${encodeURIComponent(invoice.payeeName)}&am=${invoice.amount}&cu=INR&tn=${encodeURIComponent(invoice.id)}`;
+    const upiLink = `upi://pay?pa=${invoice.payeeVpa}&pn=${encodeURIComponent(invoice.payeeName)}&am=${invoice.amount}&cu=${invoice.currency || 'INR'}&tn=${encodeURIComponent(invoice.id)}`;
     try {
       const url = await QRCode.toDataURL(upiLink, {
         width: 600,

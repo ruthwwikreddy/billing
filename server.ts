@@ -70,6 +70,11 @@ app.use(bodyParser.json());
 
 const apiRouter = express.Router();
 
+apiRouter.use((req, res, next) => {
+  console.log(`API Request: ${req.method} ${req.originalUrl}`);
+  next();
+});
+
 // Clients API
 apiRouter.get("/clients", (req, res) => {
   const clients = db.prepare("SELECT * FROM clients ORDER BY name ASC").all();
@@ -207,7 +212,8 @@ apiRouter.post("/invoices/bulk-status", (req, res) => {
 
 // Helper to process recurring invoices
 function processRecurringInvoices() {
-  const due = db.prepare("SELECT * FROM recurring_invoices WHERE nextRunDate <= ?").all() as any[];
+  const now = new Date().toISOString();
+  const due = db.prepare("SELECT * FROM recurring_invoices WHERE nextRunDate <= ?").all(now) as any[];
   
   for (const r of due) {
     const client = db.prepare("SELECT name FROM clients WHERE id = ?").get(r.clientId) as { name: string };
@@ -234,6 +240,27 @@ function processRecurringInvoices() {
 setInterval(processRecurringInvoices, 1000 * 60 * 60);
 // Also run on start
 processRecurringInvoices();
+
+// Seeding logic
+const clientsCount = db.prepare("SELECT COUNT(*) as count FROM clients").get() as { count: number };
+if (clientsCount.count === 0) {
+  console.log("Seeding initial data...");
+  const clientId1 = Math.random().toString(36).substring(2, 10).toUpperCase();
+  const clientId2 = Math.random().toString(36).substring(2, 10).toUpperCase();
+  
+  db.prepare("INSERT INTO clients (id, name, email, category) VALUES (?, ?, ?, ?)").run(clientId1, "Acme Corp", "billing@acme.com", "Enterprise");
+  db.prepare("INSERT INTO clients (id, name, email, category) VALUES (?, ?, ?, ?)").run(clientId2, "Stark Industries", "tony@stark.com", "Tech");
+  
+  db.prepare(`
+    INSERT INTO invoices (id, customerName, amount, payeeName, payeeVpa, productOrService, currency, status) 
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `).run("INV-001", "Acme Corp", 1500.00, DEFAULT_PAYEE_NAME, DEFAULT_PAYEE_VPA, "Cloud Infrastructure", "INR", "paid");
+  
+  db.prepare(`
+    INSERT INTO invoices (id, customerName, amount, payeeName, payeeVpa, productOrService, currency, status) 
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `).run("INV-002", "Stark Industries", 5000.00, DEFAULT_PAYEE_NAME, DEFAULT_PAYEE_VPA, "Arc Reactor Maintenance", "USD", "unpaid");
+}
 
 app.use("/api", apiRouter);
 
