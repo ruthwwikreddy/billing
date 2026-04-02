@@ -7,38 +7,61 @@
 
 @layer base {
   :root {
-    --bg: #FAFAFA;
+    --bg: #FFFFFF;
     --text: #000000;
     --card-bg: #FFFFFF;
-    --border: #E5E5E5;
-    --muted: #9CA3AF;
-  }
-
-  .dark {
-    --bg: #09090B;
-    --text: #FAFAFA;
-    --card-bg: #18181B;
-    --border: #27272A;
-    --muted: #71717A;
+    --border: #000000;
+    --muted: #666666;
+    --accent: #000000;
+    --f-mono: 'JetBrains Mono', 'Roboto Mono', monospace;
+    --f-sans: 'Inter', system-ui, sans-serif;
   }
 
   body {
-    @apply bg-[var(--bg)] text-[var(--text)] antialiased transition-colors duration-300;
+    @apply bg-[var(--bg)] text-[var(--text)] antialiased font-sans;
+    background-image: radial-gradient(var(--border) 0.5px, transparent 0.5px);
+    background-size: 24px 24px;
+    background-attachment: fixed;
   }
 }
 
-.modern-card {
-  @apply bg-[var(--card-bg)] border border-[var(--border)] rounded-2xl shadow-[0_4px_20px_-4px_rgba(0,0,0,0.05)] hover:shadow-[0_8px_30px_-4px_rgba(0,0,0,0.08)] transition-all duration-300;
+.brutalist-card {
+  @apply bg-[var(--card-bg)] border-4 border-[var(--border)] transition-all duration-200;
 }
 
-.modern-button {
-  @apply px-5 py-2.5 bg-black dark:bg-white text-white dark:text-black font-semibold rounded-xl transition-all duration-200 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2;
+.brutalist-card:hover {
+  @apply shadow-[8px_8px_0px_0px_var(--border)];
+  transform: translate(-4px, -4px);
 }
 
-.modern-input {
-  @apply w-full px-4 py-3 bg-[var(--card-bg)] text-[var(--text)] border border-[var(--border)] rounded-xl focus:ring-2 focus:ring-black dark:focus:ring-white focus:border-transparent outline-none transition-all placeholder:text-gray-400;
+.brutalist-button {
+  @apply px-8 py-4 bg-[var(--text)] text-[var(--bg)] font-black rounded-none border-4 border-[var(--border)] transition-all duration-200 active:translate-y-1 active:shadow-none hover:shadow-[8px_8px_0px_0px_var(--border)] flex items-center justify-center gap-3 uppercase tracking-widest text-sm;
 }
 
-.modern-badge {
-  @apply text-[10px] font-bold uppercase px-2.5 py-1 rounded-full tracking-wider;
+.brutalist-button-outline {
+  @apply px-8 py-4 bg-[var(--bg)] text-[var(--text)] font-black rounded-none border-4 border-[var(--border)] transition-all duration-200 hover:bg-[var(--text)] hover:text-[var(--bg)] flex items-center justify-center gap-3 uppercase tracking-widest text-sm;
+}
+
+.brutalist-input {
+  @apply w-full px-6 py-4 bg-[var(--bg)] text-[var(--text)] border-4 border-[var(--border)] rounded-none focus:bg-gray-50 dark:focus:bg-gray-900 outline-none transition-all placeholder:text-gray-400 font-black uppercase tracking-tight text-sm;
+}
+
+.label-mono {
+  @apply font-mono text-[10px] font-black uppercase tracking-widest text-[var(--muted)];
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 12px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  @apply bg-[var(--bg)] border-l-4 border-[var(--border)];
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  @apply bg-[var(--text)] border-2 border-[var(--bg)];
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  @apply opacity-80;
 }

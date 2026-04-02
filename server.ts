@@ -27,7 +27,8 @@ db.exec(`
     payeeVpa TEXT NOT NULL,
     status TEXT DEFAULT 'unpaid',
     createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
-    productOrService TEXT
+    productOrService TEXT,
+    currency TEXT DEFAULT 'INR'
   );
 
   CREATE TABLE IF NOT EXISTS clients (
@@ -48,9 +49,18 @@ db.exec(`
     frequency TEXT NOT NULL, -- 'weekly', 'monthly'
     nextRunDate DATETIME NOT NULL,
     createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+    currency TEXT DEFAULT 'INR',
     FOREIGN KEY (clientId) REFERENCES clients(id)
   );
 `);
+
+// Migration for existing databases
+try {
+  db.exec("ALTER TABLE invoices ADD COLUMN currency TEXT DEFAULT 'INR'");
+} catch (e) {}
+try {
+  db.exec("ALTER TABLE recurring_invoices ADD COLUMN currency TEXT DEFAULT 'INR'");
+} catch (e) {}
 
 // Clear existing data to start fresh as requested
 // db.exec("DELETE FROM invoices");
@@ -58,21 +68,15 @@ db.exec(`
 app.use(cors());
 app.use(bodyParser.json());
 
-// Health check
-app.get("/health", (req, res) => {
-  res.json({ status: "ok", env: process.env.NODE_ENV });
-});
-
-// API Routes
-console.log("Registering API routes...");
+const apiRouter = express.Router();
 
 // Clients API
-app.get("/api/clients", (req, res) => {
+apiRouter.get("/clients", (req, res) => {
   const clients = db.prepare("SELECT * FROM clients ORDER BY name ASC").all();
   res.json(clients);
 });
 
-app.post("/api/clients", (req, res) => {
+apiRouter.post("/clients", (req, res) => {
   const { id, name, email, category } = req.body;
   try {
     const stmt = db.prepare("INSERT INTO clients (id, name, email, category) VALUES (?, ?, ?, ?)");
@@ -83,14 +87,14 @@ app.post("/api/clients", (req, res) => {
   }
 });
 
-app.delete("/api/clients/:id", (req, res) => {
+apiRouter.delete("/clients/:id", (req, res) => {
   const { id } = req.params;
   db.prepare("DELETE FROM clients WHERE id = ?").run(id);
   res.json({ message: "Client deleted" });
 });
 
 // Recurring Invoices API
-app.get("/api/recurring-invoices", (req, res) => {
+apiRouter.get("/recurring-invoices", (req, res) => {
   const recurring = db.prepare(`
     SELECT r.*, c.name as customerName 
     FROM recurring_invoices r 
@@ -100,67 +104,32 @@ app.get("/api/recurring-invoices", (req, res) => {
   res.json(recurring);
 });
 
-app.post("/api/recurring-invoices", (req, res) => {
-  const { id, clientId, amount, payeeName, payeeVpa, productOrService, frequency, nextRunDate } = req.body;
+apiRouter.post("/recurring-invoices", (req, res) => {
+  const { id, clientId, amount, payeeName, payeeVpa, productOrService, frequency, nextRunDate, currency } = req.body;
   try {
     const stmt = db.prepare(`
-      INSERT INTO recurring_invoices (id, clientId, amount, payeeName, payeeVpa, productOrService, frequency, nextRunDate) 
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO recurring_invoices (id, clientId, amount, payeeName, payeeVpa, productOrService, frequency, nextRunDate, currency) 
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
-    stmt.run(id, clientId, amount, payeeName, payeeVpa, productOrService, frequency, nextRunDate);
+    stmt.run(id, clientId, amount, payeeName, payeeVpa, productOrService, frequency, nextRunDate, currency || 'INR');
     res.status(201).json({ message: "Recurring invoice set up" });
   } catch (error) {
     res.status(400).json({ error: "Failed to set up recurring invoice" });
   }
 });
 
-app.delete("/api/recurring-invoices/:id", (req, res) => {
+apiRouter.delete("/recurring-invoices/:id", (req, res) => {
   const { id } = req.params;
   db.prepare("DELETE FROM recurring_invoices WHERE id = ?").run(id);
   res.json({ message: "Recurring invoice deleted" });
 });
 
-// Helper to process recurring invoices
-function processRecurringInvoices() {
-  const now = new Date().toISOString();
-  const due = db.prepare("SELECT * FROM recurring_invoices WHERE nextRunDate <= ?").all() as any[];
-  
-  for (const r of due) {
-    const client = db.prepare("SELECT name FROM clients WHERE id = ?").get(r.clientId) as { name: string };
-    const invoiceId = `REC-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
-    
-    // Create the invoice
-    db.prepare(`
-      INSERT INTO invoices (id, customerName, amount, payeeName, payeeVpa, productOrService) 
-      VALUES (?, ?, ?, ?, ?, ?)
-    `).run(invoiceId, client.name, r.amount, r.payeeName, r.payeeVpa, r.productOrService);
-    
-    // Update next run date
-    const nextDate = new Date(r.nextRunDate);
-    if (r.frequency === 'weekly') {
-      nextDate.setDate(nextDate.getDate() + 7);
-    } else if (r.frequency === 'monthly') {
-      nextDate.setMonth(nextDate.getMonth() + 1);
-    }
-    
-    db.prepare("UPDATE recurring_invoices SET nextRunDate = ? WHERE id = ?").run(nextDate.toISOString(), r.id);
-    console.log(`Generated recurring invoice ${invoiceId} for ${client.name}`);
-  }
-}
-
-// Run every hour
-setInterval(processRecurringInvoices, 1000 * 60 * 60);
-// Also run on start
-processRecurringInvoices();
-
-app.get("/api/invoices", (req, res) => {
-  console.log("GET /api/invoices");
+apiRouter.get("/invoices", (req, res) => {
   const invoices = db.prepare("SELECT * FROM invoices ORDER BY createdAt DESC").all();
   res.json(invoices);
 });
 
-app.get("/api/stats", (req, res) => {
-  console.log("GET /api/stats");
+apiRouter.get("/stats", (req, res) => {
   const totalInvoices = db.prepare("SELECT COUNT(*) as count FROM invoices").get() as { count: number };
   const paidInvoices = db.prepare("SELECT COUNT(*) as count FROM invoices WHERE status = 'paid'").get() as { count: number };
   const unpaidInvoices = db.prepare("SELECT COUNT(*) as count FROM invoices WHERE status = 'unpaid'").get() as { count: number };
@@ -178,22 +147,20 @@ app.get("/api/stats", (req, res) => {
   });
 });
 
-app.post("/api/invoices", (req, res) => {
-  const { id, customerName, amount, payeeName, payeeVpa, productOrService } = req.body;
-  console.log("Creating invoice:", { id, customerName, amount, payeeName, payeeVpa, productOrService });
+apiRouter.post("/invoices", (req, res) => {
+  const { id, customerName, amount, payeeName, payeeVpa, productOrService, currency } = req.body;
   try {
     const stmt = db.prepare(
-      "INSERT INTO invoices (id, customerName, amount, payeeName, payeeVpa, productOrService) VALUES (?, ?, ?, ?, ?, ?)"
+      "INSERT INTO invoices (id, customerName, amount, payeeName, payeeVpa, productOrService, currency) VALUES (?, ?, ?, ?, ?, ?, ?)"
     );
-    stmt.run(id, customerName, amount, payeeName, payeeVpa, productOrService);
+    stmt.run(id, customerName, amount, payeeName, payeeVpa, productOrService, currency || 'INR');
     res.status(201).json({ message: "Invoice created successfully" });
   } catch (error) {
-    console.error("Error creating invoice:", error);
     res.status(400).json({ error: "Invoice ID already exists or invalid data" });
   }
 });
 
-app.patch("/api/invoices/:id/status", (req, res) => {
+apiRouter.patch("/invoices/:id/status", (req, res) => {
   const { id } = req.params;
   const { status } = req.body;
   const stmt = db.prepare("UPDATE invoices SET status = ? WHERE id = ?");
@@ -205,7 +172,7 @@ app.patch("/api/invoices/:id/status", (req, res) => {
   }
 });
 
-app.delete("/api/invoices/:id", (req, res) => {
+apiRouter.delete("/invoices/:id", (req, res) => {
   const { id } = req.params;
   const stmt = db.prepare("DELETE FROM invoices WHERE id = ?");
   const result = stmt.run(id);
@@ -216,7 +183,7 @@ app.delete("/api/invoices/:id", (req, res) => {
   }
 });
 
-app.post("/api/invoices/bulk-delete", (req, res) => {
+apiRouter.post("/invoices/bulk-delete", (req, res) => {
   const { ids } = req.body;
   if (!Array.isArray(ids) || ids.length === 0) {
     return res.status(400).json({ error: "Invalid IDs" });
@@ -227,7 +194,7 @@ app.post("/api/invoices/bulk-delete", (req, res) => {
   res.json({ message: `${ids.length} invoices deleted` });
 });
 
-app.post("/api/invoices/bulk-status", (req, res) => {
+apiRouter.post("/invoices/bulk-status", (req, res) => {
   const { ids, status } = req.body;
   if (!Array.isArray(ids) || ids.length === 0) {
     return res.status(400).json({ error: "Invalid IDs" });
@@ -238,8 +205,47 @@ app.post("/api/invoices/bulk-status", (req, res) => {
   res.json({ message: `Status updated for ${ids.length} invoices` });
 });
 
+// Helper to process recurring invoices
+function processRecurringInvoices() {
+  const due = db.prepare("SELECT * FROM recurring_invoices WHERE nextRunDate <= ?").all() as any[];
+  
+  for (const r of due) {
+    const client = db.prepare("SELECT name FROM clients WHERE id = ?").get(r.clientId) as { name: string };
+    const invoiceId = `REC-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
+    
+    db.prepare(`
+      INSERT INTO invoices (id, customerName, amount, payeeName, payeeVpa, productOrService, currency) 
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(invoiceId, client.name, r.amount, r.payeeName, r.payeeVpa, r.productOrService, r.currency || 'INR');
+    
+    const nextDate = new Date(r.nextRunDate);
+    if (r.frequency === 'weekly') {
+      nextDate.setDate(nextDate.getDate() + 7);
+    } else if (r.frequency === 'monthly') {
+      nextDate.setMonth(nextDate.getMonth() + 1);
+    }
+    
+    db.prepare("UPDATE recurring_invoices SET nextRunDate = ? WHERE id = ?").run(nextDate.toISOString(), r.id);
+    console.log(`Generated recurring invoice ${invoiceId} for ${client.name}`);
+  }
+}
+
+// Run every hour
+setInterval(processRecurringInvoices, 1000 * 60 * 60);
+// Also run on start
+processRecurringInvoices();
+
+app.use("/api", apiRouter);
+
+// Health check
+app.get("/health", (req, res) => {
+  res.json({ status: "ok", env: process.env.NODE_ENV });
+});
+
 async function startServer() {
   console.log(`Starting server in ${process.env.NODE_ENV || 'development'} mode...`);
+  
+  // API 404 handler
   app.use("/api/*", (req, res) => {
     console.log(`API 404: ${req.method} ${req.originalUrl}`);
     res.status(404).json({ error: "API route not found" });

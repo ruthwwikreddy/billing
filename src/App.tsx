@@ -69,6 +69,7 @@ interface RecurringInvoice {
   frequency: 'weekly' | 'monthly';
   nextRunDate: string;
   createdAt: string;
+  currency: string;
 }
 
 interface Invoice {
@@ -80,6 +81,7 @@ interface Invoice {
   status: 'paid' | 'unpaid';
   createdAt: string;
   productOrService?: string;
+  currency: string;
 }
 
 interface Stats {
@@ -94,6 +96,20 @@ interface Stats {
 const DEFAULT_PAYEE_NAME = "Ruthwik Reddy";
 const DEFAULT_PAYEE_VPA = "7842906633@ybl";
 
+const CURRENCIES = [
+  { code: 'INR', symbol: '₹', name: 'Indian Rupee' },
+  { code: 'USD', symbol: '$', name: 'US Dollar' },
+  { code: 'EUR', symbol: '€', name: 'Euro' },
+  { code: 'GBP', symbol: '£', name: 'British Pound' },
+  { code: 'JPY', symbol: '¥', name: 'Japanese Yen' },
+  { code: 'AUD', symbol: 'A$', name: 'Australian Dollar' },
+  { code: 'CAD', symbol: 'C$', name: 'Canadian Dollar' },
+];
+
+const getCurrencySymbol = (code: string) => {
+  return CURRENCIES.find(c => c.code === code)?.symbol || code;
+};
+
 export default function App() {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
@@ -101,7 +117,6 @@ export default function App() {
   const [showForm, setShowForm] = useState(false);
   const [showClientsModal, setShowClientsModal] = useState(false);
   const [showRecurringModal, setShowRecurringModal] = useState(false);
-  const [darkMode, setDarkMode] = useState(false);
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
   const [loading, setLoading] = useState(false);
   const [qrDataUrl, setQrDataUrl] = useState<string>('');
@@ -143,7 +158,8 @@ export default function App() {
     clientId: '',
     amount: '',
     frequency: 'monthly' as 'weekly' | 'monthly',
-    productOrService: ''
+    productOrService: '',
+    currency: 'INR'
   });
 
   // Form state
@@ -155,7 +171,8 @@ export default function App() {
     payeeVpa: DEFAULT_PAYEE_VPA,
     productOrService: '',
     isRecurring: false,
-    frequency: 'monthly' as 'weekly' | 'monthly'
+    frequency: 'monthly' as 'weekly' | 'monthly',
+    currency: 'INR'
   });
 
   const regenerateId = () => {
@@ -169,8 +186,8 @@ export default function App() {
     const checkHealth = async () => {
       try {
         const res = await fetch('/health');
-        const data = await res.json();
-        console.log('Server health check:', data);
+        if (!res.ok) throw new Error('Health check failed');
+        console.log('Server health check successful');
       } catch (error) {
         console.error('Server health check failed:', error);
       }
@@ -179,25 +196,13 @@ export default function App() {
     fetchInvoices();
     fetchClients();
     fetchRecurringInvoices();
-    
-    // Dark mode initialization
-    const savedDarkMode = localStorage.getItem('darkMode') === 'true';
-    setDarkMode(savedDarkMode);
-    if (savedDarkMode) {
-      document.documentElement.classList.add('dark');
-    }
   }, []);
 
-  const toggleDarkMode = () => {
-    const newMode = !darkMode;
-    setDarkMode(newMode);
-    localStorage.setItem('darkMode', String(newMode));
-    if (newMode) {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
+  useEffect(() => {
+    if (selectedInvoice) {
+      generateQrCode(selectedInvoice);
     }
-  };
+  }, [selectedInvoice]);
 
   const fetchClients = async () => {
     try {
@@ -218,12 +223,6 @@ export default function App() {
       console.error('Failed to fetch recurring invoices', error);
     }
   };
-
-  useEffect(() => {
-    if (selectedInvoice) {
-      generateQrCode(selectedInvoice);
-    }
-  }, [selectedInvoice]);
 
   const fetchInvoices = async () => {
     try {
@@ -302,7 +301,8 @@ export default function App() {
                 payeeVpa: formData.payeeVpa,
                 productOrService: formData.productOrService,
                 frequency: formData.frequency,
-                nextRunDate: nextRun.toISOString()
+                nextRunDate: nextRun.toISOString(),
+                currency: formData.currency
               }),
             });
             fetchRecurringInvoices();
@@ -318,7 +318,8 @@ export default function App() {
           payeeVpa: DEFAULT_PAYEE_VPA,
           productOrService: '',
           isRecurring: false,
-          frequency: 'monthly'
+          frequency: 'monthly',
+          currency: 'INR'
         });
         fetchInvoices();
       } else {
@@ -480,7 +481,7 @@ export default function App() {
         }),
       });
       if (res.ok) {
-        setRecurringFormData({ clientId: '', amount: '', frequency: 'monthly', productOrService: '' });
+        setRecurringFormData({ clientId: '', amount: '', frequency: 'monthly', productOrService: '', currency: 'INR' });
         fetchRecurringInvoices();
       }
     } catch (error) {
@@ -500,84 +501,86 @@ export default function App() {
   const downloadPdf = (invoice: Invoice) => {
     const doc = new jsPDF();
     
-    // Header - Ultra Modern B&W
+    // Header - Brutalist B&W
     doc.setFillColor(0, 0, 0);
-    doc.rect(0, 0, 210, 40, 'F');
+    doc.rect(0, 0, 210, 50, 'F');
     
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(32);
+    doc.setFontSize(48);
     doc.setTextColor(255, 255, 255);
-    doc.text('INVOICE', 20, 28);
+    doc.text('INVOICE', 20, 35);
     
-    doc.setFontSize(10);
-    doc.setFont('helvetica', 'normal');
-    doc.setTextColor(200, 200, 200);
-    doc.text(`ID: ${invoice.id}`, 140, 20);
-    doc.text(`DATE: ${new Date(invoice.createdAt).toLocaleDateString()}`, 140, 26);
+    doc.setFontSize(12);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(255, 255, 255);
+    doc.text(`ID: ${invoice.id.toUpperCase()}`, 190, 25, { align: 'right' });
+    doc.text(`DATE: ${new Date(invoice.createdAt).toLocaleDateString().toUpperCase()}`, 190, 35, { align: 'right' });
     
     // Billing Info
     doc.setTextColor(150, 150, 150);
-    doc.setFontSize(9);
+    doc.setFontSize(10);
     doc.setFont('helvetica', 'bold');
-    doc.text('BILL TO', 20, 60);
+    doc.text('BILL TO //', 20, 75);
     
     doc.setTextColor(0, 0, 0);
-    doc.setFontSize(14);
-    doc.text(invoice.customerName.toUpperCase(), 20, 70);
+    doc.setFontSize(24);
+    doc.text(invoice.customerName.toUpperCase(), 20, 90);
     
     doc.setTextColor(150, 150, 150);
-    doc.setFontSize(9);
-    doc.text('FROM', 120, 60);
+    doc.setFontSize(10);
+    doc.text('FROM //', 120, 75);
     
     doc.setTextColor(0, 0, 0);
+    doc.setFontSize(18);
+    doc.text(invoice.payeeName.toUpperCase(), 120, 90);
     doc.setFontSize(12);
-    doc.text(invoice.payeeName, 120, 70);
-    doc.setFontSize(10);
-    doc.setFont('helvetica', 'normal');
-    doc.text(invoice.payeeVpa, 120, 76);
+    doc.setFont('courier', 'bold');
+    doc.text(invoice.payeeVpa, 120, 100);
     
     // Table Header
     doc.setDrawColor(0, 0, 0);
-    doc.setLineWidth(0.5);
-    doc.line(20, 95, 190, 95);
+    doc.setLineWidth(2);
+    doc.line(20, 120, 190, 120);
     
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(10);
-    doc.text('DESCRIPTION', 20, 105);
-    doc.text('AMOUNT', 160, 105, { align: 'right' });
+    doc.setFontSize(12);
+    doc.text('DESCRIPTION', 20, 130);
+    doc.text('AMOUNT', 190, 130, { align: 'right' });
     
-    doc.line(20, 110, 190, 110);
+    doc.line(20, 135, 190, 135);
     
     // Table Content
-    doc.setFont('helvetica', 'normal');
-    doc.text(invoice.productOrService || `Service/Product for ${invoice.customerName}`, 20, 125);
     doc.setFont('helvetica', 'bold');
-    doc.text(`INR ${invoice.amount.toFixed(2)}`, 160, 125, { align: 'right' });
+    doc.setFontSize(14);
+    doc.text((invoice.productOrService || `Service/Product for ${invoice.customerName}`).toUpperCase(), 20, 155);
+    doc.setFontSize(24);
+    doc.text(`${invoice.currency || 'INR'} ${invoice.amount.toFixed(2)}`, 190, 155, { align: 'right' });
     
     // Total Section
-    doc.setFillColor(245, 245, 245);
-    doc.rect(110, 140, 80, 25, 'F');
-    doc.setFontSize(10);
-    doc.setTextColor(100, 100, 100);
-    doc.text('TOTAL DUE', 120, 155);
-    doc.setFontSize(16);
+    doc.setLineWidth(4);
+    doc.line(110, 175, 190, 175);
+    doc.setFontSize(12);
+    doc.setTextColor(150, 150, 150);
+    doc.text('TOTAL DUE //', 120, 190);
+    doc.setFontSize(32);
     doc.setTextColor(0, 0, 0);
-    doc.text(`INR ${invoice.amount.toFixed(2)}`, 185, 155, { align: 'right' });
+    doc.text(`${invoice.currency || 'INR'} ${invoice.amount.toFixed(2)}`, 190, 210, { align: 'right' });
     
     // QR Code Integration
     if (qrDataUrl) {
-      doc.setDrawColor(230, 230, 230);
-      doc.rect(75, 180, 60, 75);
-      doc.addImage(qrDataUrl, 'PNG', 80, 185, 50, 50);
-      doc.setFontSize(8);
-      doc.setTextColor(150, 150, 150);
-      doc.text('SCAN TO PAY VIA UPI', 105, 245, { align: 'center' });
+      doc.setDrawColor(0, 0, 0);
+      doc.setLineWidth(1);
+      doc.rect(75, 220, 60, 60);
+      doc.addImage(qrDataUrl, 'PNG', 80, 225, 50, 50);
+      doc.setFontSize(10);
+      doc.setTextColor(0, 0, 0);
+      doc.text('SCAN TO PAY // UPI', 105, 285, { align: 'center' });
     }
     
     // Footer
     doc.setFontSize(8);
-    doc.setTextColor(180, 180, 180);
-    doc.text(`© 2026 UPISync. All rights reserved.`, 105, 285, { align: 'center' });
+    doc.setTextColor(200, 200, 200);
+    doc.text(`© 2026 UPISync Protocol. All rights reserved. Generated via AISync.`, 105, 292, { align: 'center' });
     
     doc.save(`Invoice_${invoice.id}.pdf`);
   };
@@ -616,64 +619,60 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-[#FAFAFA] text-[#000000] font-sans selection:bg-gray-200">
+    <div className="min-h-screen font-sans selection:bg-[var(--text)] selection:text-[var(--bg)]">
       {/* Header */}
-      <header className="bg-white border-b border-gray-100 sticky top-0 z-20">
-        <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-black rounded-xl flex items-center justify-center shadow-xl shadow-gray-200">
-              <QrCode className="text-white w-6 h-6" />
+      <header className="bg-[var(--bg)] border-b-4 border-[var(--border)] sticky top-0 z-20">
+        <div className="max-w-7xl mx-auto px-6 h-24 flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 bg-[var(--text)] flex items-center justify-center">
+              <QrCode className="text-[var(--bg)] w-7 h-7" />
             </div>
-            <h1 className="text-2xl font-black tracking-tighter text-black uppercase">UPISync</h1>
+            <div>
+              <h1 className="text-3xl font-black tracking-tighter text-[var(--text)] uppercase leading-none">UPISync</h1>
+              <p className="label-mono mt-1">Invoicing Protocol v2.1</p>
+            </div>
           </div>
-          <div className="flex gap-2">
-            <button 
-              onClick={toggleDarkMode}
-              className="p-3 bg-white dark:bg-zinc-900 hover:bg-gray-50 dark:hover:bg-zinc-800 rounded-xl text-black dark:text-white transition-all border border-gray-100 dark:border-zinc-800 shadow-sm hover:shadow-md active:scale-95 flex items-center gap-2"
-              title="Toggle Dark Mode"
-            >
-              {darkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
-            </button>
+          <div className="flex gap-3">
             <button 
               onClick={() => setShowClientsModal(true)}
-              className="p-3 bg-white dark:bg-zinc-900 hover:bg-gray-50 dark:hover:bg-zinc-800 rounded-xl text-black dark:text-white transition-all border border-gray-100 dark:border-zinc-800 shadow-sm hover:shadow-md active:scale-95 flex items-center gap-2"
+              className="brutalist-button-outline"
               title="Manage Clients"
             >
-              <Users className="w-5 h-5" />
-              <span className="text-xs font-bold uppercase tracking-widest hidden sm:inline">Clients</span>
+              <Users className="w-4 h-4" />
+              <span className="hidden sm:inline">Clients</span>
             </button>
             <button 
               onClick={() => setShowRecurringModal(true)}
-              className="p-3 bg-white dark:bg-zinc-900 hover:bg-gray-50 dark:hover:bg-zinc-800 rounded-xl text-black dark:text-white transition-all border border-gray-100 dark:border-zinc-800 shadow-sm hover:shadow-md active:scale-95 flex items-center gap-2"
+              className="brutalist-button-outline"
               title="Recurring Invoices"
             >
-              <Repeat className="w-5 h-5" />
-              <span className="text-xs font-bold uppercase tracking-widest hidden sm:inline">Recurring</span>
+              <Repeat className="w-4 h-4" />
+              <span className="hidden sm:inline">Recurring</span>
             </button>
             <button 
               onClick={() => setShowDashboard(!showDashboard)}
               className={cn(
-                "p-3 rounded-xl transition-all border shadow-sm hover:shadow-md active:scale-95 flex items-center gap-2",
-                showDashboard ? "bg-black text-white border-black" : "bg-white text-black border-gray-100 hover:bg-gray-50"
+                "brutalist-button-outline",
+                showDashboard && "bg-[var(--text)] text-[var(--bg)]"
               )}
               title="Dashboard"
             >
-              <LayoutDashboard className="w-5 h-5" />
-              <span className="text-xs font-bold uppercase tracking-widest hidden sm:inline">Dashboard</span>
+              <LayoutDashboard className="w-4 h-4" />
+              <span className="hidden sm:inline">Dashboard</span>
             </button>
             <button 
               onClick={() => setShowExportModal(true)}
-              className="p-3 bg-white hover:bg-gray-50 rounded-xl text-black transition-all border border-gray-100 shadow-sm hover:shadow-md active:scale-95 flex items-center gap-2"
+              className="brutalist-button-outline"
               title="Export CSV"
             >
-              <FileDown className="w-5 h-5" />
-              <span className="text-xs font-bold uppercase tracking-widest hidden sm:inline">Export</span>
+              <FileDown className="w-4 h-4" />
+              <span className="hidden sm:inline">Export</span>
             </button>
             <button 
               onClick={() => setShowForm(true)}
-              className="modern-button shadow-xl shadow-gray-100"
+              className="brutalist-button"
             >
-              <Plus className="w-5 h-5" />
+              <Plus className="w-4 h-4" />
               New Invoice
             </button>
           </div>
@@ -687,64 +686,65 @@ export default function App() {
             animate={{ opacity: 1, y: 0 }}
             className="space-y-8 mb-12"
           >
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div className="modern-card p-6 bg-white">
-                <div className="flex items-center gap-4 mb-4">
-                  <div className="w-10 h-10 bg-gray-50 rounded-xl flex items-center justify-center">
-                    <TrendingUp className="w-5 h-5 text-black" />
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-0 border border-[var(--border)]">
+              <div className="p-8 bg-[var(--bg)] border-r border-[var(--border)]">
+                <div className="flex items-center gap-4 mb-6">
+                  <div className="w-10 h-10 bg-[var(--text)] flex items-center justify-center">
+                    <TrendingUp className="w-5 h-5 text-[var(--bg)]" />
                   </div>
-                  <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest">Total Revenue</h3>
+                  <h3 className="label-mono">Total Revenue</h3>
                 </div>
-                <p className="text-3xl font-black text-black">₹{stats.totalAmount.toLocaleString()}</p>
-                <p className="text-[10px] font-bold text-gray-400 mt-2 uppercase tracking-tighter">Across {stats.totalCount} Invoices</p>
+                <p className="text-4xl font-black text-[var(--text)]">{getCurrencySymbol('INR')}{stats.totalAmount.toLocaleString()}</p>
+                <p className="label-mono mt-4">Across {stats.totalCount} Invoices</p>
               </div>
-              <div className="modern-card p-6 bg-white">
-                <div className="flex items-center gap-4 mb-4">
-                  <div className="w-10 h-10 bg-green-50 rounded-xl flex items-center justify-center">
-                    <CheckCircle2 className="w-5 h-5 text-green-600" />
+              <div className="p-8 bg-[var(--bg)] border-r border-[var(--border)]">
+                <div className="flex items-center gap-4 mb-6">
+                  <div className="w-10 h-10 bg-[var(--text)] flex items-center justify-center">
+                    <CheckCircle2 className="w-5 h-5 text-[var(--bg)]" />
                   </div>
-                  <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest">Paid Amount</h3>
+                  <h3 className="label-mono">Paid Amount</h3>
                 </div>
-                <p className="text-3xl font-black text-black">₹{stats.paidAmount.toLocaleString()}</p>
-                <p className="text-[10px] font-bold text-green-600 mt-2 uppercase tracking-tighter">{stats.paidCount} Paid</p>
+                <p className="text-4xl font-black text-[var(--text)]">{getCurrencySymbol('INR')}{stats.paidAmount.toLocaleString()}</p>
+                <p className="label-mono mt-4 text-green-600">{stats.paidCount} Paid</p>
               </div>
-              <div className="modern-card p-6 bg-white">
-                <div className="flex items-center gap-4 mb-4">
-                  <div className="w-10 h-10 bg-red-50 rounded-xl flex items-center justify-center">
-                    <Clock className="w-5 h-5 text-red-600" />
+              <div className="p-8 bg-[var(--bg)]">
+                <div className="flex items-center gap-4 mb-6">
+                  <div className="w-10 h-10 bg-[var(--text)] flex items-center justify-center">
+                    <Clock className="w-5 h-5 text-[var(--bg)]" />
                   </div>
-                  <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest">Pending Amount</h3>
+                  <h3 className="label-mono">Pending Amount</h3>
                 </div>
-                <p className="text-3xl font-black text-black">₹{stats.unpaidAmount.toLocaleString()}</p>
-                <p className="text-[10px] font-bold text-red-600 mt-2 uppercase tracking-tighter">{stats.unpaidCount} Pending</p>
+                <p className="text-4xl font-black text-[var(--text)]">{getCurrencySymbol('INR')}{stats.unpaidAmount.toLocaleString()}</p>
+                <p className="label-mono mt-4 text-red-600">{stats.unpaidCount} Pending</p>
               </div>
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-              <div className="modern-card p-8 bg-white h-[400px]">
-                <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-8">Revenue Distribution</h3>
+              <div className="p-8 bg-[var(--bg)] border-4 border-[var(--border)] h-[400px]">
+                <h3 className="text-[10px] font-black text-[var(--text)] uppercase tracking-widest border-b-2 border-[var(--border)] pb-4 mb-8">Revenue Distribution</h3>
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={[
                     { name: 'Paid', amount: stats.paidAmount },
                     { name: 'Unpaid', amount: stats.unpaidAmount }
                   ]}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
-                    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: 'bold' }} />
-                    <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: 'bold' }} />
+                    <CartesianGrid strokeDasharray="0" vertical={false} stroke="#eee" strokeWidth={1} />
+                    <XAxis dataKey="name" axisLine={true} tickLine={true} tick={{ fontSize: 10, fontWeight: '900', fill: '#000' }} />
+                    <YAxis axisLine={true} tickLine={true} tick={{ fontSize: 10, fontWeight: '900', fill: '#000' }} />
                     <Tooltip 
-                      contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
-                      cursor={{ fill: '#f9fafb' }}
+                      contentStyle={{ backgroundColor: '#fff', borderRadius: '0', border: `2px solid #000`, boxShadow: 'none', fontWeight: '900', textTransform: 'uppercase', fontSize: '10px', color: '#000' }}
+                      itemStyle={{ color: '#000' }}
+                      cursor={{ fill: '#f3f4f6' }}
                     />
-                    <Bar dataKey="amount" radius={[4, 4, 0, 0]}>
-                      <Cell fill="#000000" />
-                      <Cell fill="#e5e7eb" />
+                    <Bar dataKey="amount">
+                      <Cell fill="#000" />
+                      <Cell fill="#fff" stroke="#000" strokeWidth={2} />
                     </Bar>
                   </BarChart>
                 </ResponsiveContainer>
               </div>
 
-              <div className="modern-card p-8 bg-white h-[400px]">
-                <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-8">Invoice Status</h3>
+              <div className="p-8 bg-[var(--bg)] border-4 border-[var(--border)] h-[400px]">
+                <h3 className="text-[10px] font-black text-[var(--text)] uppercase tracking-widest border-b-2 border-[var(--border)] pb-4 mb-8">Invoice Status</h3>
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
                     <Pie
@@ -756,14 +756,17 @@ export default function App() {
                       cy="50%"
                       innerRadius={60}
                       outerRadius={100}
-                      paddingAngle={5}
+                      paddingAngle={0}
                       dataKey="value"
+                      stroke="#000"
+                      strokeWidth={2}
                     >
-                      <Cell fill="#000000" />
-                      <Cell fill="#e5e7eb" />
+                      <Cell fill="#000" />
+                      <Cell fill="#fff" />
                     </Pie>
                     <Tooltip 
-                      contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
+                      contentStyle={{ backgroundColor: '#fff', borderRadius: '0', border: `2px solid #000`, boxShadow: 'none', fontWeight: '900', textTransform: 'uppercase', fontSize: '10px', color: '#000' }}
+                      itemStyle={{ color: '#000' }}
                     />
                   </PieChart>
                 </ResponsiveContainer>
@@ -775,37 +778,39 @@ export default function App() {
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
         {/* Sidebar / List */}
         <div className="lg:col-span-4 space-y-6">
-          <div className="space-y-4">
-            <div className="flex items-center justify-between px-1">
-              <h2 className="text-xs font-bold text-gray-400 uppercase tracking-widest">Recent Activity</h2>
-              <span className="text-xs bg-black px-2 py-0.5 rounded-full text-white font-medium">{filteredAndSortedInvoices.length}</span>
+          <div className="space-y-6">
+            <div className="flex items-center justify-between px-1 border-b-2 border-[var(--border)] pb-2">
+              <h2 className="text-[10px] font-black text-[var(--text)] uppercase tracking-widest">Recent Activity</h2>
+              <span className="text-[10px] bg-[var(--text)] px-3 py-1 text-[var(--bg)] font-black uppercase">{filteredAndSortedInvoices.length} Total</span>
             </div>
 
             {/* Search and Sort */}
-            <div className="space-y-3">
+            <div className="space-y-4">
               <div className="relative group">
-                <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 group-focus-within:text-black transition-colors" />
+                <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text)] z-10" />
                 <input 
                   type="text"
-                  placeholder="Search ID, customer, amount..."
-                  className="w-full pl-11 pr-4 py-3 bg-white border border-gray-100 rounded-2xl focus:ring-2 focus:ring-black focus:border-transparent outline-none transition-all text-sm font-medium"
+                  placeholder="Search Registry..."
+                  className="brutalist-input pl-12"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                 />
               </div>
-              <div className="flex gap-2">
-                <div className="relative flex-1">
-                  <Filter className="absolute left-4 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+              <div className="flex gap-0 border-2 border-[var(--border)]">
+                <div className="relative flex-1 border-r-2 border-[var(--border)]">
+                  <Filter className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text)]" />
                   <select 
-                    className="w-full pl-10 pr-4 py-2.5 bg-white border border-gray-100 rounded-xl text-xs font-bold uppercase tracking-tighter appearance-none focus:ring-2 focus:ring-black outline-none cursor-pointer"
+                    className="w-full pl-12 pr-4 py-3 bg-[var(--bg)] text-[var(--text)] text-[10px] font-black uppercase tracking-widest appearance-none outline-none cursor-pointer hover:opacity-80"
                     value={sortBy}
                     onChange={(e) => setSortBy(e.target.value as any)}
                   >
-                    <option value="date">Sort by Date</option>
-                    <option value="amount">Sort by Amount</option>
-                    <option value="id">Sort by ID</option>
+                    <option value="date">Sort: Chronological</option>
+                    <option value="amount">Sort: Value</option>
+                    <option value="id">Sort: Identifier</option>
                   </select>
-                  <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
+                </div>
+                <div className="px-4 flex items-center bg-[var(--bg)]">
+                  <ChevronDown className="w-4 h-4 text-[var(--text)]" />
                 </div>
               </div>
             </div>
@@ -818,23 +823,23 @@ export default function App() {
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: 10 }}
-                className="p-4 bg-black rounded-2xl shadow-xl flex items-center justify-between gap-4"
+                className="p-6 bg-[var(--text)] border-2 border-[var(--border)] flex items-center justify-between gap-4"
               >
-                <span className="text-[10px] font-black text-white uppercase tracking-widest">
+                <span className="text-[10px] font-black text-[var(--bg)] uppercase tracking-widest">
                   {selectedIds.length} Selected
                 </span>
-                <div className="flex gap-2">
+                <div className="flex gap-4">
                   <button 
                     onClick={() => handleBulkStatusUpdate('paid')}
-                    className="px-3 py-1.5 bg-white/10 hover:bg-white/20 text-white text-[10px] font-bold uppercase rounded-lg transition-colors"
+                    className="px-4 py-2 bg-[var(--bg)] text-[var(--text)] text-[10px] font-black uppercase tracking-widest hover:bg-[var(--muted)]/20 transition-colors"
                   >
                     Mark Paid
                   </button>
                   <button 
                     onClick={handleBulkDelete}
-                    className="p-1.5 bg-red-500/20 hover:bg-red-500/40 text-red-400 rounded-lg transition-colors"
+                    className="p-2 bg-red-600 text-white hover:bg-red-700 transition-colors"
                   >
-                    <Trash2 className="w-4 h-4" />
+                    <Trash2 className="w-5 h-5" />
                   </button>
                 </div>
               </motion.div>
@@ -848,33 +853,33 @@ export default function App() {
                 key={inv.id}
                 onClick={() => setSelectedInvoice(inv)}
                 className={cn(
-                  "p-5 modern-card cursor-pointer group relative overflow-hidden",
+                  "p-6 border-4 transition-all cursor-pointer group relative overflow-hidden",
                   selectedInvoice?.id === inv.id 
-                    ? "ring-2 ring-black bg-gray-50" 
-                    : inv.status === 'paid' ? "bg-green-50/30" : "bg-white"
+                    ? "border-[var(--border)] bg-[var(--bg)] opacity-95 translate-x-2 -translate-y-2 shadow-[-8px_8px_0px_0px_var(--border)]" 
+                    : "border-[var(--border)] bg-[var(--bg)] hover:opacity-90"
                 )}
               >
-                <div className="flex justify-between items-start mb-3">
-                  <div className="flex items-center gap-3">
+                <div className="flex justify-between items-start mb-4">
+                  <div className="flex items-center gap-4">
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
                         toggleSelection(inv.id);
                       }}
-                      className="p-1 hover:bg-gray-100 rounded-md transition-colors"
+                      className="p-1 hover:bg-[var(--text)] hover:text-[var(--bg)] transition-colors border-2 border-transparent hover:border-[var(--border)]"
                     >
                       {selectedIds.includes(inv.id) ? (
-                        <CheckSquare className="w-4 h-4 text-black" />
+                        <CheckSquare className="w-5 h-5 text-[var(--text)] group-hover:text-inherit" />
                       ) : (
-                        <Square className="w-4 h-4 text-gray-300" />
+                        <Square className="w-5 h-5 text-[var(--muted)]" />
                       )}
                     </button>
-                    <span className="text-[10px] font-mono text-gray-400">#{inv.id}</span>
+                    <span className="text-[10px] font-black text-[var(--muted)] label-mono uppercase tracking-widest">#{inv.id}</span>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-3">
                     <span className={cn(
-                      "modern-badge",
-                      inv.status === 'paid' ? "bg-black text-white" : "bg-gray-100 text-gray-600"
+                      "px-3 py-1 text-[10px] font-black uppercase tracking-widest",
+                      inv.status === 'paid' ? "bg-[var(--text)] text-[var(--bg)]" : "bg-[var(--bg)] text-[var(--text)] border-2 border-[var(--border)]"
                     )}>
                       {inv.status}
                     </span>
@@ -883,35 +888,37 @@ export default function App() {
                         e.stopPropagation();
                         setInvoiceToDelete(inv);
                       }}
-                      className="p-1.5 hover:bg-red-50 hover:text-red-600 text-gray-300 rounded-lg transition-colors"
+                      className="p-2 hover:bg-red-600 hover:text-white text-[var(--muted)] transition-colors border-2 border-transparent hover:border-[var(--border)]"
                       title="Delete Invoice"
                     >
-                      <Trash2 className="w-3.5 h-3.5" />
+                      <Trash2 className="w-4 h-4" />
                     </button>
                   </div>
                 </div>
-                <h3 className="font-bold text-black truncate text-lg">{inv.customerName}</h3>
-                <div className="flex justify-between items-end mt-4">
+                <h3 className="text-2xl font-black text-[var(--text)] uppercase tracking-tighter truncate leading-none mb-4">{inv.customerName}</h3>
+                <div className="flex justify-between items-end">
                   <div className="space-y-1">
-                    <span className="text-xl font-black text-black block">₹{inv.amount.toLocaleString()}</span>
-                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-tighter block">
-                      {new Date(inv.createdAt).toLocaleDateString()} • {new Date(inv.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    <span className="text-3xl font-black text-[var(--text)] tracking-tighter leading-none block">
+                      {getCurrencySymbol(inv.currency || 'INR')}{inv.amount.toLocaleString()}
+                    </span>
+                    <span className="text-[10px] font-black text-[var(--muted)] uppercase tracking-widest label-mono block mt-2">
+                      {new Date(inv.createdAt).toLocaleDateString()}
                     </span>
                   </div>
                   <ArrowRight className={cn(
-                    "w-5 h-5 text-gray-300 transition-transform group-hover:translate-x-1 mb-1",
-                    selectedInvoice?.id === inv.id && "text-black"
+                    "w-6 h-6 text-[var(--muted)] transition-transform group-hover:translate-x-2",
+                    selectedInvoice?.id === inv.id && "text-[var(--text)]"
                   )} />
                 </div>
               </motion.div>
             ))}
             
             {filteredAndSortedInvoices.length === 0 && (
-              <div className="text-center py-16 bg-white border border-gray-200 rounded-2xl border-dashed">
-                <div className="w-12 h-12 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <FileText className="w-6 h-6 text-gray-300" />
+              <div className="text-center py-24 bg-[var(--bg)] border-4 border-dashed border-[var(--border)]">
+                <div className="w-20 h-20 bg-[var(--text)] opacity-5 flex items-center justify-center mx-auto mb-6">
+                  <FileText className="w-10 h-10 text-[var(--text)] opacity-20" />
                 </div>
-                <p className="text-sm text-gray-400 font-medium">No invoices found</p>
+                <p className="text-xl font-black text-[var(--text)] opacity-30 uppercase tracking-tighter">No records found in registry</p>
               </div>
             )}
           </div>
@@ -925,100 +932,102 @@ export default function App() {
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -10 }}
-                className="modern-card overflow-hidden"
+                className="bg-[var(--bg)] border-4 border-[var(--border)] overflow-hidden"
               >
-                <div className="p-8 border-b border-gray-100 flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
+                <div className="p-10 border-b-4 border-[var(--border)] flex flex-col md:flex-row justify-between items-start md:items-center gap-8 bg-[var(--bg)]">
                   <div>
-                    <div className="flex flex-wrap items-center gap-3 mb-2">
-                      <h2 className="text-4xl font-black tracking-tighter text-black">Invoice #{selectedInvoice.id}</h2>
+                    <div className="flex flex-wrap items-center gap-4 mb-4">
+                      <h2 className="text-5xl font-black tracking-tighter text-[var(--text)] uppercase leading-none">Invoice #{selectedInvoice.id}</h2>
                       <button 
                         onClick={() => toggleStatus(selectedInvoice.id, selectedInvoice.status)}
                         className={cn(
-                          "modern-badge cursor-pointer transition-all hover:scale-105",
+                          "px-4 py-2 text-[10px] font-black uppercase tracking-widest transition-all border-2 border-[var(--border)]",
                           selectedInvoice.status === 'paid' 
-                            ? "bg-black text-white" 
-                            : "bg-gray-200 text-gray-800"
+                            ? "bg-[var(--text)] text-[var(--bg)]" 
+                            : "bg-[var(--bg)] text-[var(--text)] hover:opacity-80"
                         )}
                       >
                         {selectedInvoice.status === 'paid' ? 'Paid' : 'Unpaid'}
                       </button>
                     </div>
-                    <div className="flex items-center gap-4 text-sm text-gray-400 font-medium">
-                      <span className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-6 text-[10px] font-black text-[var(--muted)] uppercase tracking-widest label-mono">
+                      <span className="flex items-center gap-2">
                         <Calendar className="w-4 h-4" />
-                        {new Date(selectedInvoice.createdAt).toLocaleDateString(undefined, { dateStyle: 'medium' })}
+                        {new Date(selectedInvoice.createdAt).toLocaleDateString()}
                       </span>
-                      <span className="flex items-center gap-1.5">
+                      <span className="flex items-center gap-2">
                         <Clock className="w-4 h-4" />
-                        {new Date(selectedInvoice.createdAt).toLocaleTimeString(undefined, { timeStyle: 'short' })}
+                        {new Date(selectedInvoice.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                       </span>
                     </div>
                   </div>
-                  <div className="flex gap-2">
+                  <div className="flex gap-4">
                     <button 
                       onClick={() => downloadPdf(selectedInvoice)}
-                      className="p-4 bg-white hover:bg-gray-50 rounded-2xl text-black transition-all border border-gray-100 shadow-sm hover:shadow-md active:scale-95"
+                      className="p-5 bg-[var(--text)] text-[var(--bg)] hover:opacity-80 transition-all border-2 border-[var(--border)] active:scale-95"
                       title="Download PDF"
                     >
-                      <Download className="w-6 h-6" />
+                      <Download className="w-8 h-8" />
                     </button>
                   </div>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2">
-                  <div className="p-8 space-y-8 border-b md:border-b-0 md:border-r border-gray-100">
+                  <div className="p-10 space-y-12 border-b-4 md:border-b-0 md:border-r-4 border-[var(--border)]">
                     <section>
-                      <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-4">Customer</label>
-                      <div className="flex items-center gap-4">
-                        <div className="w-14 h-14 bg-gray-50 rounded-2xl flex items-center justify-center border border-gray-100">
-                          <User className="text-black w-7 h-7" />
+                      <label className="text-[10px] font-black text-[var(--muted)] uppercase tracking-widest block mb-6 label-mono">Target Entity</label>
+                      <div className="flex items-center gap-6">
+                        <div className="w-20 h-20 bg-[var(--text)] flex items-center justify-center border-4 border-[var(--border)]">
+                          <User className="text-[var(--bg)] w-10 h-10" />
                         </div>
                         <div>
-                          <p className="font-black text-xl text-black">{selectedInvoice.customerName}</p>
-                          <p className="text-xs text-gray-400 font-bold uppercase tracking-tighter">Verified Client</p>
+                          <p className="text-3xl font-black text-[var(--text)] uppercase tracking-tight leading-none mb-2">{selectedInvoice.customerName}</p>
+                          <p className="text-[10px] text-[var(--muted)] font-black uppercase tracking-widest label-mono">Verified Registry Entry</p>
                         </div>
                       </div>
                     </section>
 
                     <section>
-                      <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-4">Payment Details</label>
-                      <div className="space-y-4">
-                        <div className="flex justify-between items-center">
-                          <span className="text-sm text-gray-400 font-medium">Merchant</span>
-                          <span className="text-sm font-black text-black">{selectedInvoice.payeeName}</span>
+                      <label className="text-[10px] font-black text-[var(--muted)] uppercase tracking-widest block mb-6 label-mono">Transaction Metadata</label>
+                      <div className="space-y-6">
+                        <div className="flex justify-between items-center border-b-2 border-[var(--border)] opacity-10 pb-4">
+                          <span className="text-[10px] text-[var(--muted)] font-black uppercase tracking-widest label-mono">Merchant</span>
+                          <span className="text-lg font-black text-[var(--text)] uppercase tracking-tight">{selectedInvoice.payeeName}</span>
                         </div>
-                        <div className="flex justify-between items-center">
-                          <span className="text-sm text-gray-400 font-medium">UPI ID</span>
-                          <span className="text-sm font-mono font-bold text-black bg-gray-100 px-3 py-1 rounded-xl">{selectedInvoice.payeeVpa}</span>
+                        <div className="flex justify-between items-center border-b-2 border-[var(--border)] opacity-10 pb-4">
+                          <span className="text-[10px] text-[var(--muted)] font-black uppercase tracking-widest label-mono">UPI Protocol</span>
+                          <span className="text-sm font-black text-[var(--bg)] bg-[var(--text)] px-4 py-1 uppercase tracking-widest">{selectedInvoice.payeeVpa}</span>
                         </div>
                         {selectedInvoice.productOrService && (
-                          <div className="flex justify-between items-center">
-                            <span className="text-sm text-gray-400 font-medium">Product/Service</span>
-                            <span className="text-sm font-bold text-black">{selectedInvoice.productOrService}</span>
+                          <div className="flex justify-between items-center border-b-2 border-[var(--border)] opacity-10 pb-4">
+                            <span className="text-[10px] text-[var(--muted)] font-black uppercase tracking-widest label-mono">Service Class</span>
+                            <span className="text-lg font-black text-[var(--text)] uppercase tracking-tight">{selectedInvoice.productOrService}</span>
                           </div>
                         )}
                       </div>
                     </section>
 
-                    <div className="pt-4">
-                      <div className="p-8 bg-black rounded-3xl shadow-2xl shadow-gray-300">
+                    <div className="pt-6">
+                      <div className="p-10 bg-[var(--text)] border-4 border-[var(--border)]">
                         <div className="flex justify-between items-center">
-                          <span className="text-gray-400 font-bold text-xs uppercase tracking-widest">Amount Due</span>
-                          <span className="text-4xl font-black text-white tracking-tighter">₹{selectedInvoice.amount.toLocaleString()}</span>
+                          <span className="text-[var(--bg)] opacity-60 font-black text-[10px] uppercase tracking-widest label-mono">Total Value</span>
+                          <span className="text-5xl font-black text-[var(--bg)] tracking-tighter leading-none">
+                            {getCurrencySymbol(selectedInvoice.currency || 'INR')}{selectedInvoice.amount.toLocaleString()}
+                          </span>
                         </div>
                       </div>
                     </div>
                   </div>
 
-                  <div className="p-8 flex flex-col items-center justify-center bg-gray-50/50 relative">
+                  <div className="p-10 flex flex-col items-center justify-center bg-[var(--bg)] opacity-95 relative">
                     <div className={cn(
-                      "bg-white p-4 rounded-2xl shadow-xl border-4 transition-all duration-500 mb-6 relative",
-                      isScanned ? "border-green-500 scale-105" : "border-white"
+                      "bg-[var(--bg)] p-6 border-8 transition-all duration-500 mb-10 relative",
+                      isScanned ? "border-green-600 scale-105 shadow-[20px_20px_0px_0px_rgba(22,163,74,0.2)]" : "border-[var(--border)] shadow-[20px_20px_0px_0px_var(--border)]"
                     )}>
                       {qrDataUrl ? (
-                        <img src={qrDataUrl} alt="UPI QR" className="w-48 h-48" />
+                        <img src={qrDataUrl} alt="UPI QR" className="w-64 h-64" />
                       ) : (
-                        <div className="w-48 h-48 bg-gray-100 rounded-xl animate-pulse" />
+                        <div className="w-64 h-64 bg-[var(--muted)]/10 animate-pulse" />
                       )}
                       
                       <AnimatePresence>
@@ -1027,52 +1036,49 @@ export default function App() {
                             initial={{ opacity: 0, scale: 0.5 }}
                             animate={{ opacity: 1, scale: 1 }}
                             exit={{ opacity: 0, scale: 0.5 }}
-                            className="absolute inset-0 bg-green-500/10 flex items-center justify-center rounded-xl backdrop-blur-[2px]"
+                            className="absolute inset-0 bg-green-600/10 flex items-center justify-center backdrop-blur-[2px]"
                           >
-                            <div className="bg-green-500 text-white p-3 rounded-full shadow-lg">
-                              <Check className="w-8 h-8" />
+                            <div className="bg-green-600 text-white p-6 border-4 border-[var(--border)] shadow-xl">
+                              <Check className="w-12 h-12" />
                             </div>
                           </motion.div>
                         )}
                       </AnimatePresence>
                     </div>
 
-                    <div className="flex gap-3 mb-6">
+                    <div className="flex gap-4 mb-10">
                       <button 
                         onClick={() => generateQrCode(selectedInvoice)}
-                        className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-100 rounded-xl text-xs font-bold uppercase tracking-widest hover:bg-gray-50 transition-all shadow-sm"
+                        className="flex items-center gap-3 px-6 py-3 bg-[var(--bg)] border-4 border-[var(--border)] text-[10px] font-black uppercase tracking-widest hover:opacity-80 transition-all"
                       >
-                        <RefreshCw className="w-3.5 h-3.5" />
+                        <RefreshCw className="w-4 h-4" />
                         Regenerate
                       </button>
                       <button 
                         onClick={simulateScan}
-                        className="flex items-center gap-2 px-4 py-2 bg-black text-white rounded-xl text-xs font-bold uppercase tracking-widest hover:bg-gray-800 transition-all shadow-sm"
+                        className="flex items-center gap-3 px-6 py-3 bg-[var(--text)] text-[var(--bg)] border-4 border-[var(--border)] text-[10px] font-black uppercase tracking-widest hover:opacity-80 transition-all"
                       >
+                        <QrCode className="w-4 h-4" />
                         Simulate Scan
                       </button>
                     </div>
 
-                    <div className="text-center space-y-3">
-                      <div className="flex items-center justify-center gap-2 text-black">
-                        <ShieldCheck className="w-5 h-5" />
-                        <span className="text-sm font-black uppercase tracking-tighter">Secure UPI Payment</span>
-                      </div>
-                      <p className="text-xs text-gray-400 max-w-[200px] leading-relaxed font-medium">
-                        Scan with any UPI app like GPay, PhonePe, or Paytm to pay instantly.
+                    <div className="text-center max-w-xs">
+                      <p className="text-[10px] font-black text-[var(--text)] uppercase tracking-widest leading-relaxed label-mono">
+                        Scan with any UPI application to initiate secure transaction protocol.
                       </p>
                     </div>
                   </div>
                 </div>
               </motion.div>
             ) : (
-              <div className="h-full flex flex-col items-center justify-center text-center p-20 bg-white border border-gray-200 rounded-3xl border-dashed">
-                <div className="w-16 h-16 bg-gray-50 rounded-2xl flex items-center justify-center mb-6">
-                  <Info className="w-8 h-8 text-gray-300" />
+              <div className="h-full flex flex-col items-center justify-center text-center p-20 bg-[var(--bg)] border-4 border-dashed border-[var(--border)]">
+                <div className="w-24 h-24 bg-[var(--text)] opacity-5 flex items-center justify-center mb-8">
+                  <FileText className="w-12 h-12 text-[var(--text)] opacity-20" />
                 </div>
-                <h3 className="text-xl font-bold text-gray-900">No Invoice Selected</h3>
-                <p className="text-sm text-gray-500 max-w-xs mt-2">
-                  Choose an invoice from the list to view full details and generate the payment QR code.
+                <h3 className="text-2xl font-black text-[var(--text)] uppercase tracking-tighter mb-4">Select an Entry</h3>
+                <p className="text-[10px] font-black text-[var(--muted)] uppercase tracking-widest label-mono max-w-xs mx-auto">
+                  Choose a record from the registry to view detailed transaction metadata and protocol status.
                 </p>
               </div>
             )}
@@ -1082,57 +1088,57 @@ export default function App() {
     </main>
 
       {/* GEO Content: How it Works & FAQ */}
-      <section className="max-w-7xl mx-auto px-6 py-20 border-t border-gray-100">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-20">
+      <section className="max-w-7xl mx-auto px-6 py-32 border-t-4 border-[var(--border)]">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-24">
           <div>
-            <h2 className="text-3xl font-black tracking-tighter text-black uppercase mb-8">How it Works</h2>
-            <div className="space-y-8">
-              <div className="flex gap-6">
-                <div className="w-10 h-10 bg-black text-white rounded-full flex items-center justify-center font-black shrink-0">1</div>
+            <h2 className="text-4xl font-black tracking-tighter text-[var(--text)] uppercase mb-12">How it Works</h2>
+            <div className="space-y-12">
+              <div className="flex gap-8">
+                <div className="w-12 h-12 bg-[var(--text)] text-[var(--bg)] flex items-center justify-center font-black shrink-0 border-2 border-[var(--border)]">1</div>
                 <div>
-                  <h3 className="font-bold text-black mb-1">Create Invoice</h3>
-                  <p className="text-sm text-gray-500 leading-relaxed">Enter customer details, amount, and your UPI VPA. Our system instantly generates a secure, unique invoice ID.</p>
+                  <h3 className="text-xl font-black text-[var(--text)] uppercase tracking-tight mb-2">Create Invoice</h3>
+                  <p className="text-xs text-[var(--muted)] label-mono leading-relaxed">Enter customer details, amount, and your UPI VPA. Our system instantly generates a secure, unique invoice ID.</p>
                 </div>
               </div>
-              <div className="flex gap-6">
-                <div className="w-10 h-10 bg-black text-white rounded-full flex items-center justify-center font-black shrink-0">2</div>
+              <div className="flex gap-8">
+                <div className="w-12 h-12 bg-[var(--text)] text-[var(--bg)] flex items-center justify-center font-black shrink-0 border-2 border-[var(--border)]">2</div>
                 <div>
-                  <h3 className="font-bold text-black mb-1">Generate Dynamic QR</h3>
-                  <p className="text-sm text-gray-500 leading-relaxed">A dynamic UPI QR code is created specifically for that invoice. It includes the exact amount and invoice ID for easy reconciliation.</p>
+                  <h3 className="text-xl font-black text-[var(--text)] uppercase tracking-tight mb-2">Generate Dynamic QR</h3>
+                  <p className="text-xs text-[var(--muted)] label-mono leading-relaxed">A dynamic UPI QR code is created specifically for that invoice. It includes the exact amount and invoice ID for easy reconciliation.</p>
                 </div>
               </div>
-              <div className="flex gap-6">
-                <div className="w-10 h-10 bg-black text-white rounded-full flex items-center justify-center font-black shrink-0">3</div>
+              <div className="flex gap-8">
+                <div className="w-12 h-12 bg-[var(--text)] text-[var(--bg)] flex items-center justify-center font-black shrink-0 border-2 border-[var(--border)]">3</div>
                 <div>
-                  <h3 className="font-bold text-black mb-1">Get Paid Instantly</h3>
-                  <p className="text-sm text-gray-500 leading-relaxed">Share the QR or download the professional PDF invoice. Payments go directly to your linked bank account via UPI.</p>
+                  <h3 className="text-xl font-black text-[var(--text)] uppercase tracking-tight mb-2">Get Paid Instantly</h3>
+                  <p className="text-xs text-[var(--muted)] label-mono leading-relaxed">Share the QR or download the professional PDF invoice. Payments go directly to your linked bank account via UPI.</p>
                 </div>
               </div>
             </div>
           </div>
 
           <div>
-            <h2 className="text-3xl font-black tracking-tighter text-black uppercase mb-8">Key Benefits</h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-              <div className="p-6 bg-white border border-gray-100 rounded-2xl shadow-sm">
-                <ShieldCheck className="w-6 h-6 text-black mb-3" />
-                <h4 className="font-bold text-black mb-1">Zero Commission</h4>
-                <p className="text-xs text-gray-500">UPI is free. We don't charge any transaction fees or commissions on your payments.</p>
+            <h2 className="text-3xl font-black tracking-tighter text-[var(--text)] uppercase mb-8">Key Benefits</h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-0 border-4 border-[var(--border)]">
+              <div className="p-8 bg-[var(--bg)] border-b-4 sm:border-b-0 sm:border-r-4 border-[var(--border)] hover:opacity-80 transition-colors">
+                <ShieldCheck className="w-8 h-8 text-[var(--text)] mb-4" />
+                <h4 className="text-xl font-black text-[var(--text)] uppercase tracking-tight mb-2">Zero Commission</h4>
+                <p className="text-xs text-[var(--muted)] label-mono leading-relaxed">UPI is free. We don't charge any transaction fees or commissions on your payments.</p>
               </div>
-              <div className="p-6 bg-white border border-gray-100 rounded-2xl shadow-sm">
-                <Clock className="w-6 h-6 text-black mb-3" />
-                <h4 className="font-bold text-black mb-1">Instant Settlement</h4>
-                <p className="text-xs text-gray-500">Money moves directly from the customer's bank to yours. No waiting for settlement cycles.</p>
+              <div className="p-8 bg-[var(--bg)] border-b-4 sm:border-b-0 border-[var(--border)] hover:opacity-80 transition-colors">
+                <Clock className="w-8 h-8 text-[var(--text)] mb-4" />
+                <h4 className="text-xl font-black text-[var(--text)] uppercase tracking-tight mb-2">Instant Settlement</h4>
+                <p className="text-xs text-[var(--muted)] label-mono leading-relaxed">Money moves directly from the customer's bank to yours. No waiting for settlement cycles.</p>
               </div>
-              <div className="p-6 bg-white border border-gray-100 rounded-2xl shadow-sm">
-                <FileText className="w-6 h-6 text-black mb-3" />
-                <h4 className="font-bold text-black mb-1">Professional PDF</h4>
-                <p className="text-xs text-gray-500">Generate high-quality, minimalist black & white invoices that look professional and are easy to print.</p>
+              <div className="p-8 bg-[var(--bg)] border-r-4 border-[var(--border)] hover:opacity-80 transition-colors">
+                <FileText className="w-8 h-8 text-[var(--text)] mb-4" />
+                <h4 className="text-xl font-black text-[var(--text)] uppercase tracking-tight mb-2">Professional PDF</h4>
+                <p className="text-xs text-[var(--muted)] label-mono leading-relaxed">Generate high-quality, minimalist black & white invoices that look professional and are easy to print.</p>
               </div>
-              <div className="p-6 bg-white border border-gray-100 rounded-2xl shadow-sm">
-                <Search className="w-6 h-6 text-black mb-3" />
-                <h4 className="font-bold text-black mb-1">Easy Tracking</h4>
-                <p className="text-xs text-gray-500">Keep track of paid and unpaid invoices with a clean dashboard and powerful search tools.</p>
+              <div className="p-8 bg-[var(--bg)] hover:opacity-80 transition-colors">
+                <Search className="w-8 h-8 text-[var(--text)] mb-4" />
+                <h4 className="text-xl font-black text-[var(--text)] uppercase tracking-tight mb-2">Easy Tracking</h4>
+                <p className="text-xs text-[var(--muted)] label-mono leading-relaxed">Keep track of paid and unpaid invoices with a clean dashboard and powerful search tools.</p>
               </div>
             </div>
           </div>
@@ -1140,68 +1146,68 @@ export default function App() {
       </section>
 
       {/* GEO Content: Use Cases & FAQ */}
-      <section className="max-w-7xl mx-auto px-6 py-20 border-t border-gray-100 bg-gray-50/30">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-20">
+      <section className="max-w-7xl mx-auto px-6 py-32 border-t-4 border-[var(--border)]">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-24">
           <div>
-            <h2 className="text-3xl font-black tracking-tighter text-black uppercase mb-8">Who is it for?</h2>
-            <div className="grid grid-cols-1 gap-4">
-              <div className="flex items-start gap-4 p-4 bg-white rounded-2xl border border-gray-100">
-                <div className="w-10 h-10 bg-gray-50 rounded-xl flex items-center justify-center shrink-0">
-                  <User className="w-5 h-5 text-black" />
+            <h2 className="text-4xl font-black tracking-tighter text-[var(--text)] uppercase mb-12">Who is it for?</h2>
+            <div className="grid grid-cols-1 gap-8">
+              <div className="flex items-start gap-8 p-8 bg-[var(--bg)] border-4 border-[var(--border)] hover:opacity-80 transition-colors">
+                <div className="w-16 h-16 bg-[var(--text)] flex items-center justify-center shrink-0 border-2 border-[var(--border)]">
+                  <User className="w-8 h-8 text-[var(--bg)]" />
                 </div>
                 <div>
-                  <h4 className="font-bold text-black">Freelancers</h4>
-                  <p className="text-xs text-gray-500">Perfect for designers, developers, and consultants who need a quick way to bill clients via UPI.</p>
+                  <h4 className="text-2xl font-black text-[var(--text)] uppercase tracking-tight mb-2">Freelancers</h4>
+                  <p className="text-xs text-[var(--muted)] label-mono leading-relaxed">Perfect for designers, developers, and consultants who need a quick way to bill clients via UPI.</p>
                 </div>
               </div>
-              <div className="flex items-start gap-4 p-4 bg-white rounded-2xl border border-gray-100">
-                <div className="w-10 h-10 bg-gray-50 rounded-xl flex items-center justify-center shrink-0">
-                  <QrCode className="w-5 h-5 text-black" />
+              <div className="flex items-start gap-8 p-8 bg-[var(--bg)] border-4 border-[var(--border)] hover:opacity-80 transition-colors">
+                <div className="w-16 h-16 bg-[var(--text)] flex items-center justify-center shrink-0 border-2 border-[var(--border)]">
+                  <QrCode className="w-8 h-8 text-[var(--bg)]" />
                 </div>
                 <div>
-                  <h4 className="font-bold text-black">Small Businesses</h4>
-                  <p className="text-xs text-gray-500">Ideal for retail shops, service providers, and local vendors looking to digitize their billing.</p>
+                  <h4 className="text-2xl font-black text-[var(--text)] uppercase tracking-tight mb-2">Small Businesses</h4>
+                  <p className="text-xs text-[var(--muted)] label-mono leading-relaxed">Ideal for retail shops, service providers, and local vendors looking to digitize their billing.</p>
                 </div>
               </div>
-              <div className="flex items-start gap-4 p-4 bg-white rounded-2xl border border-gray-100">
-                <div className="w-10 h-10 bg-gray-50 rounded-xl flex items-center justify-center shrink-0">
-                  <FileText className="w-5 h-5 text-black" />
+              <div className="flex items-start gap-8 p-8 bg-[var(--bg)] border-4 border-[var(--border)] hover:opacity-80 transition-colors">
+                <div className="w-16 h-16 bg-[var(--text)] flex items-center justify-center shrink-0 border-2 border-[var(--border)]">
+                  <FileText className="w-8 h-8 text-[var(--bg)]" />
                 </div>
                 <div>
-                  <h4 className="font-bold text-black">Service Providers</h4>
-                  <p className="text-xs text-gray-500">Great for tutors, trainers, and repair services who collect payments on-the-go.</p>
+                  <h4 className="text-2xl font-black text-[var(--text)] uppercase tracking-tight mb-2">Service Providers</h4>
+                  <p className="text-xs text-[var(--muted)] label-mono leading-relaxed">Great for tutors, trainers, and repair services who collect payments on-the-go.</p>
                 </div>
               </div>
             </div>
           </div>
 
           <div>
-            <h2 className="text-3xl font-black tracking-tighter text-black uppercase mb-8">Frequently Asked Questions</h2>
-            <div className="space-y-6">
-              <details className="group border-b border-gray-100 pb-4 cursor-pointer">
-                <summary className="flex justify-between items-center font-bold text-black list-none">
+            <h2 className="text-4xl font-black tracking-tighter text-[var(--text)] uppercase mb-12">Frequently Asked Questions</h2>
+            <div className="space-y-8">
+              <details className="group border-b-4 border-[var(--border)] pb-6 cursor-pointer">
+                <summary className="flex justify-between items-center text-xl font-black text-[var(--text)] uppercase tracking-tight list-none">
                   Is UPISync secure for payments?
-                  <ChevronDown className="w-4 h-4 text-gray-400 group-open:rotate-180 transition-transform" />
+                  <ChevronDown className="w-6 h-6 text-[var(--text)] group-open:rotate-180 transition-transform" />
                 </summary>
-                <p className="text-sm text-gray-500 mt-3 leading-relaxed">
+                <p className="text-xs text-[var(--muted)] mt-4 leading-relaxed label-mono">
                   Yes. UPISync only generates the payment instruction (QR code). The actual transaction happens securely within the user's UPI-enabled banking app. We never touch your money.
                 </p>
               </details>
-              <details className="group border-b border-gray-100 pb-4 cursor-pointer">
-                <summary className="flex justify-between items-center font-bold text-black list-none">
+              <details className="group border-b-4 border-[var(--border)] pb-6 cursor-pointer">
+                <summary className="flex justify-between items-center text-xl font-black text-[var(--text)] uppercase tracking-tight list-none">
                   What UPI apps are supported?
-                  <ChevronDown className="w-4 h-4 text-gray-400 group-open:rotate-180 transition-transform" />
+                  <ChevronDown className="w-6 h-6 text-[var(--text)] group-open:rotate-180 transition-transform" />
                 </summary>
-                <p className="text-sm text-gray-500 mt-3 leading-relaxed">
+                <p className="text-xs text-[var(--muted)] mt-4 leading-relaxed label-mono">
                   Our dynamic QR codes follow the standard NPCI UPI specifications, meaning they work with GPay, PhonePe, Paytm, Amazon Pay, and all BHIM-enabled banking apps.
                 </p>
               </details>
-              <details className="group border-b border-gray-100 pb-4 cursor-pointer">
-                <summary className="flex justify-between items-center font-bold text-black list-none">
+              <details className="group border-b-4 border-[var(--border)] pb-6 cursor-pointer">
+                <summary className="flex justify-between items-center text-xl font-black text-[var(--text)] uppercase tracking-tight list-none">
                   Can I export my billing data?
-                  <ChevronDown className="w-4 h-4 text-gray-400 group-open:rotate-180 transition-transform" />
+                  <ChevronDown className="w-6 h-6 text-[var(--text)] group-open:rotate-180 transition-transform" />
                 </summary>
-                <p className="text-sm text-gray-500 mt-3 leading-relaxed">
+                <p className="text-xs text-[var(--muted)] mt-4 leading-relaxed label-mono">
                   Absolutely. You can download individual professional PDF invoices or export your entire billing history as a CSV file for accounting and tax purposes.
                 </p>
               </details>
@@ -1219,37 +1225,37 @@ export default function App() {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={() => setShowExportModal(false)}
-              className="absolute inset-0 bg-black/60 backdrop-blur-md"
+              className="absolute inset-0 bg-black/60 backdrop-blur-sm"
             />
             <motion.div
-              initial={{ scale: 0.95, opacity: 0, y: 20 }}
+              initial={{ scale: 0.9, opacity: 0, y: 20 }}
               animate={{ scale: 1, opacity: 1, y: 0 }}
-              exit={{ scale: 0.95, opacity: 0, y: 20 }}
-              className="relative bg-white w-full max-w-lg rounded-[2.5rem] shadow-2xl overflow-hidden border border-gray-100"
+              exit={{ scale: 0.9, opacity: 0, y: 20 }}
+              className="relative bg-[var(--bg)] w-full max-w-lg rounded-none shadow-none border-4 border-[var(--border)] overflow-hidden"
             >
-              <div className="p-8 border-b border-gray-100 flex justify-between items-center">
+              <div className="p-8 border-b-4 border-[var(--border)] flex justify-between items-center bg-[var(--text)]">
                 <div>
-                  <h2 className="text-2xl font-black tracking-tighter text-black">Export Invoices</h2>
-                  <p className="text-xs text-gray-400 font-bold uppercase tracking-widest mt-1">Select fields for CSV</p>
+                  <h2 className="text-2xl font-black tracking-tighter text-[var(--bg)] uppercase">Export Invoices</h2>
+                  <p className="text-[10px] text-[var(--bg)] opacity-60 font-bold uppercase tracking-widest label-mono mt-1">Select fields for CSV</p>
                 </div>
-                <button onClick={() => setShowExportModal(false)} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
-                  <X className="w-5 h-5 text-gray-500" />
+                <button onClick={() => setShowExportModal(false)} className="p-2 hover:bg-[var(--bg)] hover:text-[var(--text)] text-[var(--bg)] transition-colors border-2 border-transparent hover:border-[var(--border)]">
+                  <X className="w-6 h-6" />
                 </button>
               </div>
-              <div className="p-8 space-y-6">
+              <div className="p-8 space-y-8">
                 <div className="grid grid-cols-2 gap-4">
                   {Object.keys(exportFields).map((field) => (
                     <button
                       key={field}
                       onClick={() => setExportFields(prev => ({ ...prev, [field]: !(prev as any)[field] }))}
                       className={cn(
-                        "flex items-center justify-between p-4 rounded-2xl border transition-all",
+                        "flex items-center justify-between p-4 border-2 transition-all",
                         (exportFields as any)[field] 
-                          ? "bg-black border-black text-white" 
-                          : "bg-white border-gray-100 text-gray-400 hover:border-gray-200"
+                          ? "bg-[var(--text)] border-[var(--border)] text-[var(--bg)]" 
+                          : "bg-[var(--bg)] border-[var(--border)] text-[var(--text)] hover:opacity-80"
                       )}
                     >
-                      <span className="text-xs font-bold uppercase tracking-widest">{field.replace(/([A-Z])/g, ' $1')}</span>
+                      <span className="text-[10px] font-black uppercase tracking-widest">{field.replace(/([A-Z])/g, ' $1')}</span>
                       {(exportFields as any)[field] ? <CheckSquare className="w-4 h-4" /> : <Square className="w-4 h-4" />}
                     </button>
                   ))}
@@ -1258,10 +1264,9 @@ export default function App() {
                 <div className="pt-4">
                   <button
                     onClick={exportToCSV}
-                    className="w-full py-4 bg-black hover:bg-gray-800 text-white font-black uppercase tracking-widest rounded-2xl transition-all shadow-xl shadow-gray-200 flex items-center justify-center gap-3"
+                    className="w-full py-5 brutalist-button text-xl uppercase tracking-widest bg-[var(--text)] text-[var(--bg)] border-4 border-[var(--border)]"
                   >
-                    <FileDown className="w-5 h-5" />
-                    Download CSV ({filteredAndSortedInvoices.length} items)
+                    Download CSV ({filteredAndSortedInvoices.length})
                   </button>
                 </div>
               </div>
@@ -1279,43 +1284,43 @@ export default function App() {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={() => setInvoiceToDelete(null)}
-              className="absolute inset-0 bg-black/60 backdrop-blur-md"
+              className="absolute inset-0 bg-black/60 backdrop-blur-sm"
             />
             <motion.div
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.9, opacity: 0 }}
-              className="relative bg-white w-full max-w-md rounded-[2.5rem] shadow-2xl overflow-hidden p-10 text-center"
+              initial={{ scale: 0.9, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.9, opacity: 0, y: 20 }}
+              className="relative bg-[var(--bg)] w-full max-w-md rounded-none shadow-none border-4 border-[var(--border)] overflow-hidden p-12 text-center"
             >
-              <div className="w-20 h-20 bg-red-50 rounded-3xl flex items-center justify-center mx-auto mb-8">
-                <AlertTriangle className="w-10 h-10 text-red-500" />
+              <div className="w-24 h-24 bg-red-600 flex items-center justify-center mx-auto mb-8 border-4 border-[var(--border)]">
+                <AlertTriangle className="w-12 h-12 text-white" />
               </div>
-              <h2 className="text-3xl font-black tracking-tighter text-black mb-4">Delete Invoice?</h2>
-              <p className="text-gray-500 font-medium mb-8 leading-relaxed">
-                You are about to permanently delete invoice <span className="text-black font-bold">#{invoiceToDelete.id}</span> for <span className="text-black font-bold">{invoiceToDelete.customerName}</span>. This action cannot be undone.
+              <h2 className="text-4xl font-black tracking-tighter text-[var(--text)] uppercase mb-4">Terminate?</h2>
+              <p className="text-[var(--muted)] label-mono mb-10 leading-relaxed">
+                Permanently delete invoice <span className="text-[var(--text)] font-black">#{invoiceToDelete.id}</span> for <span className="text-[var(--text)] font-black">{invoiceToDelete.customerName}</span>.
               </p>
               
-              <div className="p-6 bg-gray-50 rounded-3xl mb-8 flex justify-between items-center">
-                <div className="text-left">
-                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Amount</p>
-                  <p className="text-xl font-black text-black">₹{invoiceToDelete.amount.toLocaleString()}</p>
+              <div className="p-8 bg-[var(--bg)] opacity-80 border-2 border-[var(--border)] mb-10 flex justify-between items-center text-left">
+                <div>
+                  <p className="text-[10px] font-black text-[var(--muted)] uppercase tracking-widest label-mono">Amount</p>
+                  <p className="text-2xl font-black text-[var(--text)] tracking-tighter">{getCurrencySymbol(invoiceToDelete.currency || 'INR')}{invoiceToDelete.amount.toLocaleString()}</p>
                 </div>
                 <div className="text-right">
-                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Status</p>
-                  <p className="text-sm font-bold text-black uppercase">{invoiceToDelete.status}</p>
+                  <p className="text-[10px] font-black text-[var(--muted)] uppercase tracking-widest label-mono">Status</p>
+                  <p className="text-sm font-black text-[var(--text)] uppercase tracking-widest">{invoiceToDelete.status}</p>
                 </div>
               </div>
 
-              <div className="flex flex-col gap-3">
+              <div className="flex flex-col gap-4">
                 <button
                   onClick={() => deleteInvoice(invoiceToDelete.id)}
-                  className="w-full py-4 bg-red-600 hover:bg-red-700 text-white font-black uppercase tracking-widest rounded-2xl transition-all shadow-xl shadow-red-100"
+                  className="w-full py-5 bg-red-600 hover:bg-red-700 text-white font-black uppercase tracking-widest transition-all border-2 border-[var(--border)]"
                 >
-                  Confirm Delete
+                  Confirm Deletion
                 </button>
                 <button
                   onClick={() => setInvoiceToDelete(null)}
-                  className="w-full py-4 bg-white hover:bg-gray-50 text-gray-400 font-black uppercase tracking-widest rounded-2xl transition-all"
+                  className="w-full py-5 bg-[var(--bg)] hover:opacity-80 text-[var(--text)] font-black uppercase tracking-widest transition-all border-2 border-[var(--border)]"
                 >
                   Cancel
                 </button>
@@ -1334,25 +1339,25 @@ export default function App() {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={() => setShowForm(false)}
-              className="absolute inset-0 bg-gray-900/40 dark:bg-black/60 backdrop-blur-sm"
+              className="absolute inset-0 bg-black/60 backdrop-blur-sm"
             />
             <motion.div
               initial={{ scale: 0.95, opacity: 0, y: 20 }}
               animate={{ scale: 1, opacity: 1, y: 0 }}
               exit={{ scale: 0.95, opacity: 0, y: 20 }}
-              className="relative bg-white dark:bg-zinc-900 w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden border border-gray-100 dark:border-zinc-800"
+              className="relative bg-[var(--bg)] w-full max-w-lg rounded-none shadow-none border-4 border-[var(--border)] overflow-hidden"
             >
-              <div className="p-6 border-b border-gray-100 dark:border-zinc-800 flex justify-between items-center">
-                <h2 className="text-xl font-bold text-gray-900 dark:text-white">Create Invoice</h2>
-                <button onClick={() => setShowForm(false)} className="p-2 hover:bg-gray-100 dark:hover:bg-zinc-800 rounded-full transition-colors">
-                  <X className="w-5 h-5 text-gray-500" />
+              <div className="p-8 border-b-4 border-[var(--border)] flex justify-between items-center bg-[var(--text)]">
+                <h2 className="text-2xl font-black text-[var(--bg)] uppercase tracking-tighter">Create Invoice</h2>
+                <button onClick={() => setShowForm(false)} className="p-2 hover:bg-[var(--bg)] hover:text-[var(--text)] text-[var(--bg)] transition-colors border-2 border-transparent hover:border-[var(--border)]">
+                  <X className="w-6 h-6" />
                 </button>
               </div>
-              <form onSubmit={handleCreateInvoice} className="p-6 space-y-5 max-h-[80vh] overflow-y-auto custom-scrollbar">
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-gray-400 dark:text-zinc-500 uppercase tracking-widest">Select Client (Optional)</label>
+              <form onSubmit={handleCreateInvoice} className="p-8 space-y-8 max-h-[80vh] overflow-y-auto custom-scrollbar">
+                <div className="space-y-3">
+                  <label className="text-[10px] font-black text-[var(--muted)] uppercase tracking-widest label-mono">Select Client (Optional)</label>
                   <select 
-                    className="modern-input"
+                    className="w-full p-4 bg-[var(--bg)] border-2 border-[var(--border)] rounded-none outline-none focus:opacity-80 transition-all text-sm font-black uppercase tracking-tight text-[var(--text)]"
                     onChange={(e) => {
                       const client = clients.find(c => c.id === e.target.value);
                       if (client) {
@@ -1367,70 +1372,82 @@ export default function App() {
                   </select>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-1.5 relative">
-                    <label className="text-[10px] font-bold text-gray-400 dark:text-zinc-500 uppercase tracking-widest">Invoice ID</label>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+                  <div className="space-y-3 relative">
+                    <label className="text-[10px] font-black text-[var(--muted)] uppercase tracking-widest label-mono">Invoice ID</label>
                     <div className="relative">
                       <input
                         required
                         type="text"
                         placeholder="INV-001"
-                        className="modern-input pr-10"
+                        className="w-full p-4 bg-[var(--bg)] border-2 border-[var(--border)] rounded-none outline-none focus:opacity-80 transition-all text-sm font-black uppercase tracking-tight pr-12 text-[var(--text)]"
                         value={formData.id}
                         onChange={e => setFormData({ ...formData, id: e.target.value })}
                       />
                       <button 
                         type="button"
                         onClick={regenerateId}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 p-1.5 hover:bg-gray-100 dark:hover:bg-zinc-800 rounded-lg text-gray-400 hover:text-black dark:hover:text-white transition-all"
+                        className="absolute right-0 top-0 h-full px-3 hover:bg-[var(--text)] hover:text-[var(--bg)] transition-all border-l-2 border-[var(--border)] text-[var(--text)]"
                         title="Regenerate ID"
                       >
                         <RefreshCw className="w-4 h-4" />
                       </button>
                     </div>
                   </div>
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] font-bold text-gray-400 dark:text-zinc-500 uppercase tracking-widest">Amount (INR)</label>
+                  <div className="space-y-3">
+                    <label className="text-[10px] font-black text-[var(--muted)] uppercase tracking-widest label-mono">Currency</label>
+                    <select 
+                      className="w-full p-4 bg-[var(--bg)] border-2 border-[var(--border)] rounded-none outline-none focus:opacity-80 transition-all text-sm font-black uppercase tracking-tight text-[var(--text)]"
+                      value={formData.currency}
+                      onChange={e => setFormData({ ...formData, currency: e.target.value })}
+                    >
+                      {CURRENCIES.map(c => (
+                        <option key={c.code} value={c.code}>{c.code} ({c.symbol})</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-3">
+                    <label className="text-[10px] font-black text-[var(--muted)] uppercase tracking-widest label-mono">Amount</label>
                     <input
                       required
                       type="number"
                       placeholder="0.00"
-                      className="modern-input"
+                      className="w-full p-4 bg-[var(--bg)] border-2 border-[var(--border)] rounded-none outline-none focus:opacity-80 transition-all text-sm font-black uppercase tracking-tight text-[var(--text)]"
                       value={formData.amount}
                       onChange={e => setFormData({ ...formData, amount: e.target.value })}
                     />
                   </div>
                 </div>
 
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-gray-400 dark:text-zinc-500 uppercase tracking-widest">Customer Name</label>
+                <div className="space-y-3">
+                  <label className="text-[10px] font-black text-[var(--muted)] uppercase tracking-widest label-mono">Customer Name</label>
                   <input
                     required
                     type="text"
                     placeholder="Enter customer name"
-                    className="modern-input"
+                    className="w-full p-4 bg-[var(--bg)] border-2 border-[var(--border)] rounded-none outline-none focus:opacity-80 transition-all text-sm font-black uppercase tracking-tight text-[var(--text)]"
                     value={formData.customerName}
                     onChange={e => setFormData({ ...formData, customerName: e.target.value })}
                   />
                 </div>
 
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-gray-400 dark:text-zinc-500 uppercase tracking-widest">Product or Service</label>
+                <div className="space-y-3">
+                  <label className="text-[10px] font-black text-[var(--muted)] uppercase tracking-widest label-mono">Product or Service</label>
                   <input
                     required
                     type="text"
                     placeholder="e.g. Web Development, Consulting"
-                    className="modern-input"
+                    className="w-full p-4 bg-[var(--bg)] border-2 border-[var(--border)] rounded-none outline-none focus:opacity-80 transition-all text-sm font-black uppercase tracking-tight text-[var(--text)]"
                     value={formData.productOrService}
                     onChange={e => setFormData({ ...formData, productOrService: e.target.value })}
                   />
                 </div>
 
-                <div className="p-4 bg-gray-50 dark:bg-zinc-800/50 rounded-2xl border border-gray-100 dark:border-zinc-800">
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="flex items-center gap-2">
-                      <Repeat className="w-4 h-4 text-gray-500" />
-                      <span className="text-sm font-semibold">Make Recurring</span>
+                <div className="p-6 bg-[var(--bg)] border-2 border-[var(--border)]">
+                  <div className="flex items-center justify-between mb-6">
+                    <div className="flex items-center gap-3">
+                      <Repeat className="w-5 h-5 text-[var(--text)]" />
+                      <span className="text-sm font-black uppercase tracking-tight text-[var(--text)]">Make Recurring</span>
                     </div>
                     <label className="relative inline-flex items-center cursor-pointer">
                       <input 
@@ -1439,7 +1456,7 @@ export default function App() {
                         checked={formData.isRecurring}
                         onChange={(e) => setFormData({ ...formData, isRecurring: e.target.checked })}
                       />
-                      <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-zinc-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-zinc-600 peer-checked:bg-black dark:peer-checked:bg-white dark:after:bg-zinc-900"></div>
+                      <div className="w-14 h-7 bg-[var(--muted)] opacity-20 peer-focus:outline-none rounded-none peer peer-checked:after:translate-x-full peer-checked:after:border-[var(--border)] after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-[var(--bg)] after:border-[var(--border)] after:border after:rounded-none after:h-6 after:w-6 after:transition-all peer-checked:bg-[var(--text)] peer-checked:opacity-100"></div>
                     </label>
                   </div>
                   
@@ -1447,20 +1464,20 @@ export default function App() {
                     <motion.div 
                       initial={{ opacity: 0, height: 0 }}
                       animate={{ opacity: 1, height: 'auto' }}
-                      className="space-y-3"
+                      className="space-y-4"
                     >
-                      <label className="block text-[10px] font-bold text-gray-400 dark:text-zinc-500 uppercase tracking-widest mb-1">Frequency</label>
-                      <div className="flex gap-2">
+                      <label className="label-mono text-[10px] text-[var(--muted)]">Frequency</label>
+                      <div className="flex gap-0 border-2 border-[var(--border)]">
                         {['weekly', 'monthly'].map((freq) => (
                           <button
                             key={freq}
                             type="button"
                             onClick={() => setFormData({ ...formData, frequency: freq as any })}
                             className={cn(
-                              "flex-1 py-2 rounded-lg text-[10px] font-bold uppercase tracking-widest border transition-all",
+                              "flex-1 py-3 text-[10px] font-black uppercase tracking-widest transition-all",
                               formData.frequency === freq 
-                                ? "bg-black dark:bg-white text-white dark:text-black border-black dark:border-white" 
-                                : "bg-white dark:bg-zinc-900 text-gray-500 border-gray-200 dark:border-zinc-800"
+                                ? "bg-[var(--text)] text-[var(--bg)]" 
+                                : "bg-[var(--bg)] text-[var(--text)] hover:opacity-80"
                             )}
                           >
                             {freq}
@@ -1471,35 +1488,35 @@ export default function App() {
                   )}
                 </div>
 
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-gray-400 dark:text-zinc-500 uppercase tracking-widest">Payee Name</label>
+                <div className="space-y-3">
+                  <label className="text-[10px] font-black text-[var(--muted)] uppercase tracking-widest label-mono">Payee Name</label>
                   <input
                     required
                     type="text"
                     placeholder="Merchant name"
-                    className="modern-input"
+                    className="w-full p-4 bg-[var(--bg)] border-2 border-[var(--border)] rounded-none outline-none focus:opacity-80 transition-all text-sm font-black uppercase tracking-tight text-[var(--text)]"
                     value={formData.payeeName}
                     onChange={e => setFormData({ ...formData, payeeName: e.target.value })}
                   />
                 </div>
 
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-gray-400 dark:text-zinc-500 uppercase tracking-widest">UPI VPA</label>
+                <div className="space-y-3">
+                  <label className="text-[10px] font-black text-[var(--muted)] uppercase tracking-widest label-mono">UPI VPA</label>
                   <input
                     required
                     type="text"
                     placeholder="upi-id@bank"
-                    className="modern-input font-mono text-sm"
+                    className="w-full p-4 bg-[var(--bg)] border-2 border-[var(--border)] rounded-none outline-none focus:opacity-80 transition-all text-sm font-black uppercase tracking-tight font-mono text-[var(--text)]"
                     value={formData.payeeVpa}
                     onChange={e => setFormData({ ...formData, payeeVpa: e.target.value })}
                   />
                 </div>
 
-                <div className="pt-4">
+                <div className="pt-6">
                   <button
                     disabled={loading}
                     type="submit"
-                    className="w-full py-4 modern-button shadow-2xl shadow-gray-200 dark:shadow-none text-lg uppercase tracking-widest"
+                    className="w-full py-5 bg-[var(--text)] text-[var(--bg)] text-xl font-black uppercase tracking-widest border-4 border-[var(--border)] hover:opacity-90 transition-all active:scale-95 disabled:opacity-50"
                   >
                     {loading ? 'Processing...' : 'Create Invoice'}
                   </button>
@@ -1510,19 +1527,20 @@ export default function App() {
         )}
       </AnimatePresence>
 
-      {/* Footer */}
-      <footer className="max-w-7xl mx-auto px-6 py-12 border-t border-gray-200 mt-12">
-        <div className="flex flex-col md:flex-row justify-between items-center gap-8">
-          <div className="flex items-center gap-2 opacity-40">
-            <QrCode className="w-5 h-5" />
-            <span className="font-bold tracking-tight">UPISync</span>
+      <footer className="max-w-7xl mx-auto px-6 py-20 border-t-4 border-[var(--border)] mt-32">
+        <div className="flex flex-col md:flex-row justify-between items-center gap-16">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 bg-[var(--text)] flex items-center justify-center border-2 border-[var(--border)]">
+              <QrCode className="w-6 h-6 text-[var(--bg)]" />
+            </div>
+            <span className="font-black uppercase tracking-tighter text-3xl text-[var(--text)]">UPISync</span>
           </div>
-          <div className="flex gap-10 text-xs text-gray-400 font-bold uppercase tracking-widest">
-            <a href="#" className="hover:text-black transition-colors">Documentation</a>
-            <a href="#" className="hover:text-black transition-colors">Privacy</a>
-            <a href="#" className="hover:text-black transition-colors">Status</a>
+          <div className="flex flex-wrap justify-center gap-12 text-[10px] font-black uppercase tracking-widest label-mono text-[var(--text)]">
+            <a href="#" className="hover:bg-[var(--text)] hover:text-[var(--bg)] px-2 py-1 transition-colors">Documentation</a>
+            <a href="#" className="hover:bg-[var(--text)] hover:text-[var(--bg)] px-2 py-1 transition-colors">Privacy</a>
+            <a href="#" className="hover:bg-[var(--text)] hover:text-[var(--bg)] px-2 py-1 transition-colors">Status</a>
           </div>
-          <p className="text-xs text-gray-400 font-medium">© 2026 UPISync. Built for speed.</p>
+          <p className="text-[10px] font-black text-[var(--muted)] uppercase tracking-widest label-mono">© 2026 UPISync Protocol. All rights reserved.</p>
         </div>
       </footer>
       {/* Clients Management Modal */}
@@ -1540,89 +1558,109 @@ export default function App() {
               initial={{ scale: 0.9, opacity: 0, y: 20 }}
               animate={{ scale: 1, opacity: 1, y: 0 }}
               exit={{ scale: 0.9, opacity: 0, y: 20 }}
-              className="relative w-full max-w-2xl bg-white dark:bg-zinc-900 rounded-3xl shadow-2xl overflow-hidden"
+              className="relative w-full max-w-3xl bg-[var(--bg)] rounded-none shadow-none border-4 border-[var(--border)] overflow-hidden"
             >
-              <div className="p-6 border-b border-gray-100 dark:border-zinc-800 flex justify-between items-center">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-black dark:bg-white rounded-xl flex items-center justify-center">
-                    <Users className="w-5 h-5 text-white dark:text-black" />
+              <div className="p-8 border-b-4 border-[var(--border)] flex justify-between items-center bg-[var(--text)]">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 bg-[var(--bg)] flex items-center justify-center border-2 border-[var(--border)]">
+                    <Users className="w-6 h-6 text-[var(--text)]" />
                   </div>
                   <div>
-                    <h2 className="text-xl font-bold">Client Management</h2>
-                    <p className="text-xs text-gray-500 uppercase tracking-widest font-bold">Save and organize customers</p>
+                    <h2 className="text-2xl font-black text-[var(--bg)] uppercase tracking-tighter">Client Registry</h2>
+                    <p className="text-[10px] text-[var(--muted)] label-mono uppercase tracking-widest">Database of active entities</p>
                   </div>
                 </div>
-                <button onClick={() => setShowClientsModal(false)} className="p-2 hover:bg-gray-100 dark:hover:bg-zinc-800 rounded-full transition-colors">
+                <button onClick={() => setShowClientsModal(false)} className="p-2 hover:bg-[var(--bg)] hover:text-[var(--text)] text-[var(--bg)] transition-colors border-2 border-transparent hover:border-[var(--border)]">
                   <X className="w-6 h-6" />
                 </button>
               </div>
 
-              <div className="p-6 max-h-[70vh] overflow-y-auto">
-                <form onSubmit={handleCreateClient} className="mb-8 p-4 bg-gray-50 dark:bg-zinc-800/50 rounded-2xl border border-gray-100 dark:border-zinc-800">
-                  <h3 className="text-sm font-bold uppercase tracking-widest mb-4">Add New Client</h3>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    <input 
-                      type="text" 
-                      placeholder="Name" 
-                      className="modern-input text-sm"
-                      value={clientFormData.name}
-                      onChange={e => setClientFormData({...clientFormData, name: e.target.value})}
-                      required
-                    />
-                    <input 
-                      type="email" 
-                      placeholder="Email" 
-                      className="modern-input text-sm"
-                      value={clientFormData.email}
-                      onChange={e => setClientFormData({...clientFormData, email: e.target.value})}
-                      required
-                    />
-                    <select 
-                      className="modern-input text-sm"
-                      value={clientFormData.category}
-                      onChange={e => setClientFormData({...clientFormData, category: e.target.value})}
-                    >
-                      <option value="General">General</option>
-                      <option value="VIP">VIP</option>
-                      <option value="Corporate">Corporate</option>
-                      <option value="Subscription">Subscription</option>
-                    </select>
+              <div className="p-8 max-h-[75vh] overflow-y-auto custom-scrollbar">
+                <form onSubmit={handleCreateClient} className="mb-12 p-8 bg-[var(--card-bg)] border-2 border-[var(--border)]">
+                  <h3 className="text-sm font-black uppercase tracking-widest border-b-2 border-[var(--border)] pb-4 mb-8 text-[var(--text)]">Register New Client</h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-8 mb-8">
+                    <div className="space-y-3">
+                      <label className="text-[10px] font-black text-[var(--muted)] uppercase tracking-widest label-mono">Full Name</label>
+                      <input 
+                        type="text" 
+                        placeholder="e.g. Acme Corp" 
+                        className="w-full p-4 bg-[var(--bg)] border-2 border-[var(--border)] rounded-none outline-none focus:bg-[var(--muted)]/5 transition-all text-sm font-black uppercase tracking-tight text-[var(--text)] placeholder:text-[var(--muted)]/50"
+                        value={clientFormData.name}
+                        onChange={e => setClientFormData({...clientFormData, name: e.target.value})}
+                        required
+                      />
+                    </div>
+                    <div className="space-y-3">
+                      <label className="text-[10px] font-black text-[var(--muted)] uppercase tracking-widest label-mono">Email Address</label>
+                      <input 
+                        type="email" 
+                        placeholder="contact@acme.com" 
+                        className="w-full p-4 bg-[var(--bg)] border-2 border-[var(--border)] rounded-none outline-none focus:bg-[var(--muted)]/5 transition-all text-sm font-black uppercase tracking-tight text-[var(--text)] placeholder:text-[var(--muted)]/50"
+                        value={clientFormData.email}
+                        onChange={e => setClientFormData({...clientFormData, email: e.target.value})}
+                        required
+                      />
+                    </div>
+                    <div className="space-y-3">
+                      <label className="text-[10px] font-black text-[var(--muted)] uppercase tracking-widest label-mono">Category</label>
+                      <select 
+                        className="w-full p-4 bg-[var(--bg)] border-2 border-[var(--border)] rounded-none outline-none focus:bg-[var(--muted)]/5 transition-all text-sm font-black uppercase tracking-tight text-[var(--text)]"
+                        value={clientFormData.category}
+                        onChange={e => setClientFormData({...clientFormData, category: e.target.value})}
+                      >
+                        <option value="General">General</option>
+                        <option value="VIP">VIP</option>
+                        <option value="Corporate">Corporate</option>
+                        <option value="Subscription">Subscription</option>
+                      </select>
+                    </div>
                   </div>
-                  <button type="submit" className="modern-button w-full mt-3 py-2 text-sm">
-                    <Plus className="w-4 h-4" /> Add Client
+                  <button 
+                    type="submit"
+                    className="w-full py-5 bg-[var(--text)] text-[var(--bg)] text-xl font-black uppercase tracking-widest border-4 border-[var(--border)] hover:opacity-90 transition-all active:scale-95"
+                  >
+                    Add to Registry
                   </button>
                 </form>
 
-                <div className="space-y-3">
-                  {clients.length === 0 ? (
-                    <div className="text-center py-12 text-gray-400">
-                      <Users className="w-12 h-12 mx-auto mb-3 opacity-20" />
-                      <p>No clients saved yet</p>
-                    </div>
-                  ) : (
-                    clients.map(client => (
-                      <div key={client.id} className="flex items-center justify-between p-4 border border-gray-100 dark:border-zinc-800 rounded-2xl hover:bg-gray-50 dark:hover:bg-zinc-800/50 transition-colors">
-                        <div className="flex items-center gap-4">
-                          <div className="w-10 h-10 bg-gray-100 dark:bg-zinc-800 rounded-full flex items-center justify-center font-bold text-gray-500">
-                            {client.name.charAt(0)}
-                          </div>
-                          <div>
-                            <h4 className="font-bold">{client.name}</h4>
-                            <p className="text-xs text-gray-500">{client.email}</p>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-3">
-                          <span className="modern-badge bg-gray-100 dark:bg-zinc-800 text-gray-500">{client.category}</span>
-                          <button 
-                            onClick={() => deleteClient(client.id)}
-                            className="p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-lg transition-colors"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
+                <div className="space-y-8">
+                  <h3 className="text-sm font-black uppercase tracking-widest border-b-2 border-[var(--border)] pb-4 text-[var(--text)]">Active Clients</h3>
+                  <div className="grid gap-6">
+                    {clients.length === 0 ? (
+                      <div className="py-20 text-center border-4 border-dashed border-[var(--border)]">
+                        <Users className="w-16 h-16 text-[var(--muted)]/20 mx-auto mb-6" />
+                        <p className="text-lg font-black uppercase text-[var(--muted)]/40 tracking-tighter">No clients registered</p>
                       </div>
-                    ))
-                  )}
+                    ) : (
+                      <div className="border-2 border-[var(--border)] divide-y-2 divide-[var(--border)]">
+                        {clients.map(client => (
+                          <div key={client.id} className="flex items-center justify-between p-8 bg-[var(--card-bg)] hover:bg-[var(--muted)]/5 transition-all group">
+                            <div className="flex items-center gap-8">
+                              <div className="w-16 h-16 bg-[var(--text)] flex items-center justify-center font-black text-[var(--bg)] text-2xl border-2 border-[var(--border)]">
+                                {client.name.charAt(0)}
+                              </div>
+                              <div>
+                                <h4 className="text-2xl font-black text-[var(--text)] uppercase tracking-tight leading-none">{client.name}</h4>
+                                <p className="label-mono text-[var(--muted)] mt-2">{client.email}</p>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-8">
+                              <span className="px-3 py-1 bg-[var(--text)] text-[var(--bg)] text-[10px] font-black uppercase tracking-widest">
+                                {client.category}
+                              </span>
+                              <button 
+                                onClick={() => deleteClient(client.id)}
+                                className="p-4 hover:bg-[var(--text)] hover:text-[var(--bg)] border-2 border-transparent hover:border-[var(--border)] transition-all text-red-600"
+                                title="Remove Client"
+                              >
+                                <Trash2 className="w-6 h-6" />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             </motion.div>
@@ -1645,31 +1683,31 @@ export default function App() {
               initial={{ scale: 0.9, opacity: 0, y: 20 }}
               animate={{ scale: 1, opacity: 1, y: 0 }}
               exit={{ scale: 0.9, opacity: 0, y: 20 }}
-              className="relative w-full max-w-3xl bg-white dark:bg-zinc-900 rounded-3xl shadow-2xl overflow-hidden"
+              className="relative w-full max-w-3xl bg-[var(--bg)] rounded-none shadow-none border-4 border-[var(--border)] overflow-hidden"
             >
-              <div className="p-6 border-b border-gray-100 dark:border-zinc-800 flex justify-between items-center">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-black dark:bg-white rounded-xl flex items-center justify-center">
-                    <Repeat className="w-5 h-5 text-white dark:text-black" />
+              <div className="p-8 border-b-4 border-[var(--border)] flex justify-between items-center bg-[var(--text)]">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 bg-[var(--bg)] flex items-center justify-center border-2 border-[var(--border)]">
+                    <Repeat className="w-6 h-6 text-[var(--text)]" />
                   </div>
                   <div>
-                    <h2 className="text-xl font-bold">Recurring Invoices</h2>
-                    <p className="text-xs text-gray-500 uppercase tracking-widest font-bold">Automated billing schedules</p>
+                    <h2 className="text-2xl font-black text-[var(--bg)] uppercase tracking-tighter">Recurring Protocol</h2>
+                    <p className="text-[10px] text-[var(--muted)] label-mono uppercase tracking-widest">Automated billing schedules</p>
                   </div>
                 </div>
-                <button onClick={() => setShowRecurringModal(false)} className="p-2 hover:bg-gray-100 dark:hover:bg-zinc-800 rounded-full transition-colors">
+                <button onClick={() => setShowRecurringModal(false)} className="p-2 hover:bg-[var(--bg)] hover:text-[var(--text)] text-[var(--bg)] transition-colors border-2 border-transparent hover:border-[var(--border)]">
                   <X className="w-6 h-6" />
                 </button>
               </div>
 
-              <div className="p-6 max-h-[70vh] overflow-y-auto">
-                <form onSubmit={handleCreateRecurring} className="mb-8 p-5 bg-gray-50 dark:bg-zinc-800/50 rounded-2xl border border-gray-100 dark:border-zinc-800">
-                  <h3 className="text-sm font-bold uppercase tracking-widest mb-4">New Recurring Schedule</h3>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
-                    <div>
-                      <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">Client</label>
+              <div className="p-8 max-h-[75vh] overflow-y-auto custom-scrollbar">
+                <form onSubmit={handleCreateRecurring} className="mb-12 p-8 bg-[var(--card-bg)] border-2 border-[var(--border)]">
+                  <h3 className="text-sm font-black uppercase tracking-widest border-b-2 border-[var(--border)] pb-4 mb-8 text-[var(--text)]">Establish Recurring Protocol</h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-8 mb-8">
+                    <div className="space-y-3">
+                      <label className="text-[10px] font-black text-[var(--muted)] uppercase tracking-widest label-mono">Target Client</label>
                       <select 
-                        className="modern-input text-sm"
+                        className="w-full p-4 bg-[var(--bg)] border-2 border-[var(--border)] rounded-none outline-none focus:bg-[var(--muted)]/5 transition-all text-sm font-black uppercase tracking-tight text-[var(--text)]"
                         value={recurringFormData.clientId}
                         onChange={e => setRecurringFormData({...recurringFormData, clientId: e.target.value})}
                         required
@@ -1678,43 +1716,56 @@ export default function App() {
                         {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                       </select>
                     </div>
-                    <div>
-                      <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">Service/Product</label>
+                    <div className="space-y-3">
+                      <label className="text-[10px] font-black text-[var(--muted)] uppercase tracking-widest label-mono">Service Description</label>
                       <input 
                         type="text" 
-                        placeholder="e.g. Monthly Maintenance" 
-                        className="modern-input text-sm"
+                        placeholder="e.g. Monthly Retainer" 
+                        className="w-full p-4 bg-[var(--bg)] border-2 border-[var(--border)] rounded-none outline-none focus:bg-[var(--muted)]/5 transition-all text-sm font-black uppercase tracking-tight text-[var(--text)] placeholder:text-[var(--muted)]/50"
                         value={recurringFormData.productOrService}
                         onChange={e => setRecurringFormData({...recurringFormData, productOrService: e.target.value})}
                         required
                       />
                     </div>
                   </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">Amount (₹)</label>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-8 mb-8">
+                    <div className="space-y-3">
+                      <label className="text-[10px] font-black text-[var(--muted)] uppercase tracking-widest label-mono">Currency</label>
+                      <select 
+                        className="w-full p-4 bg-[var(--bg)] border-2 border-[var(--border)] rounded-none outline-none focus:bg-[var(--muted)]/5 transition-all text-sm font-black uppercase tracking-tight text-[var(--text)]"
+                        value={recurringFormData.currency}
+                        onChange={e => setRecurringFormData({...recurringFormData, currency: e.target.value})}
+                        required
+                      >
+                        {CURRENCIES.map(c => (
+                          <option key={c.code} value={c.code}>{c.code} ({c.symbol})</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="space-y-3">
+                      <label className="text-[10px] font-black text-[var(--muted)] uppercase tracking-widest label-mono">Amount Per Cycle</label>
                       <input 
                         type="number" 
                         placeholder="0.00" 
-                        className="modern-input text-sm"
+                        className="w-full p-4 bg-[var(--bg)] border-2 border-[var(--border)] rounded-none outline-none focus:bg-[var(--muted)]/5 transition-all text-sm font-black uppercase tracking-tight text-[var(--text)] placeholder:text-[var(--muted)]/50"
                         value={recurringFormData.amount}
                         onChange={e => setRecurringFormData({...recurringFormData, amount: e.target.value})}
                         required
                       />
                     </div>
-                    <div>
-                      <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">Frequency</label>
-                      <div className="flex gap-2">
+                    <div className="space-y-3">
+                      <label className="label-mono text-[10px] text-[var(--muted)]">Cycle Frequency</label>
+                      <div className="flex gap-0 border-2 border-[var(--border)]">
                         {['weekly', 'monthly'].map((freq) => (
                           <button
                             key={freq}
                             type="button"
                             onClick={() => setRecurringFormData({ ...recurringFormData, frequency: freq as any })}
                             className={cn(
-                              "flex-1 py-2.5 rounded-xl text-xs font-bold uppercase tracking-widest border transition-all",
-                              recurringFormData.frequency === freq 
-                                ? "bg-black dark:bg-white text-white dark:text-black border-black dark:border-white" 
-                                : "bg-white dark:bg-zinc-900 text-gray-500 border-gray-200 dark:border-zinc-800"
+                              "flex-1 py-3 text-[10px] font-black uppercase tracking-widest transition-all",
+                              recurringInvoices.find(ri => ri.frequency === freq) || recurringFormData.frequency === freq
+                                ? "bg-[var(--text)] text-[var(--bg)]" 
+                                : "bg-[var(--bg)] text-[var(--text)] hover:bg-[var(--muted)]/5"
                             )}
                           >
                             {freq}
@@ -1723,45 +1774,57 @@ export default function App() {
                       </div>
                     </div>
                   </div>
-                  <button type="submit" className="modern-button w-full mt-5">
-                    <Plus className="w-5 h-5" /> Create Schedule
+                  <button 
+                    type="submit"
+                    className="w-full py-5 bg-[var(--text)] text-[var(--bg)] text-xl font-black uppercase tracking-widest border-4 border-[var(--border)] hover:opacity-90 transition-all active:scale-95"
+                  >
+                    Activate Protocol
                   </button>
                 </form>
 
-                <div className="space-y-4">
-                  {recurringInvoices.length === 0 ? (
-                    <div className="text-center py-12 text-gray-400">
-                      <Repeat className="w-12 h-12 mx-auto mb-3 opacity-20" />
-                      <p>No recurring invoices set up</p>
-                    </div>
-                  ) : (
-                    recurringInvoices.map(ri => (
-                      <div key={ri.id} className="p-5 border border-gray-100 dark:border-zinc-800 rounded-2xl hover:bg-gray-50 dark:hover:bg-zinc-800/50 transition-colors">
-                        <div className="flex justify-between items-start mb-3">
-                          <div>
-                            <h4 className="font-bold text-lg">{ri.customerName}</h4>
-                            <p className="text-sm text-gray-500">{ri.productOrService}</p>
-                          </div>
-                          <div className="text-right">
-                            <p className="font-bold text-lg">₹{ri.amount.toFixed(2)}</p>
-                            <span className="modern-badge bg-black dark:bg-white text-white dark:text-black">{ri.frequency}</span>
-                          </div>
-                        </div>
-                        <div className="flex items-center justify-between pt-3 border-t border-gray-100 dark:border-zinc-800">
-                          <div className="flex items-center gap-2 text-xs text-gray-500">
-                            <Calendar className="w-3 h-3" />
-                            <span>Next run: {new Date(ri.nextRunDate).toLocaleDateString()}</span>
-                          </div>
-                          <button 
-                            onClick={() => deleteRecurring(ri.id)}
-                            className="text-xs font-bold text-red-500 hover:underline"
-                          >
-                            Cancel Schedule
-                          </button>
-                        </div>
+                <div className="space-y-8">
+                  <h3 className="text-sm font-black uppercase tracking-widest border-b-2 border-[var(--border)] pb-4 text-[var(--text)]">Active Protocols</h3>
+                  <div className="grid gap-6">
+                    {recurringInvoices.length === 0 ? (
+                      <div className="py-20 text-center border-4 border-dashed border-[var(--border)]">
+                        <Repeat className="w-16 h-16 text-[var(--muted)]/20 mx-auto mb-6" />
+                        <p className="text-lg font-black uppercase text-[var(--muted)]/40 tracking-tighter">No active protocols detected</p>
                       </div>
-                    ))
-                  )}
+                    ) : (
+                      <div className="border-2 border-[var(--border)] divide-y-2 divide-[var(--border)]">
+                        {recurringInvoices.map((ri) => (
+                          <div key={ri.id} className="p-8 bg-[var(--card-bg)] hover:bg-[var(--muted)]/5 transition-all group relative">
+                            <div className="flex justify-between items-start mb-6">
+                              <div className="space-y-2">
+                                <h4 className="text-2xl font-black text-[var(--text)] uppercase tracking-tight leading-none">{ri.customerName}</h4>
+                                <p className="label-mono text-[var(--muted)]">{ri.productOrService}</p>
+                              </div>
+                              <div className="text-right">
+                                <p className="text-3xl font-black text-[var(--text)] tracking-tighter">
+                                  {getCurrencySymbol(ri.currency || 'INR')}{ri.amount.toFixed(2)}
+                                </p>
+                                <span className="px-3 py-1 bg-[var(--text)] text-[var(--bg)] text-[10px] font-black uppercase tracking-widest inline-block mt-2">
+                                  {ri.frequency}
+                                </span>
+                              </div>
+                            </div>
+                            <div className="flex items-center justify-between pt-6 border-t-2 border-[var(--border)]">
+                              <div className="flex items-center gap-3 label-mono text-[var(--muted)]">
+                                <Calendar className="w-4 h-4" />
+                                <span>Next: {new Date(ri.nextRunDate).toLocaleDateString()}</span>
+                              </div>
+                              <button 
+                                onClick={() => deleteRecurring(ri.id)}
+                                className="label-mono text-red-600 hover:bg-[var(--text)] hover:text-[var(--bg)] px-6 py-2 border-2 border-transparent hover:border-[var(--border)] transition-all font-black uppercase"
+                              >
+                                Terminate Schedule
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             </motion.div>
